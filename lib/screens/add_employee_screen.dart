@@ -2,7 +2,12 @@ import 'package:flutter/material.dart';
 import '../database/employee_services.dart';
 
 class AddEmployeeScreen extends StatefulWidget {
-  const AddEmployeeScreen({super.key});
+  final int shopId;
+
+  const AddEmployeeScreen({
+    super.key,
+    required this.shopId,
+  });
 
   @override
   State<AddEmployeeScreen> createState() =>
@@ -30,7 +35,7 @@ class _AddEmployeeScreenState
     });
 
     await _employeeService.addEmployee(
-      shopId: 1,
+      shopId: widget.shopId,
       name: _nameController.text.trim(),
       phone: _phoneController.text.trim(),
       password: _passwordController.text.trim(),

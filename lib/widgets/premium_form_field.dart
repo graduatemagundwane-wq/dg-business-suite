@@ -1,0 +1,41 @@
+import 'package:flutter/material.dart';
+
+class PremiumFormField extends StatelessWidget {
+  final TextEditingController controller;
+  final String label;
+  final String? hint;
+  final IconData? icon;
+  final TextInputType? keyboardType;
+  final bool obscureText;
+  final String? Function(String?)? validator;
+  final ValueChanged<String>? onChanged;
+
+  const PremiumFormField({
+    super.key,
+    required this.controller,
+    required this.label,
+    this.hint,
+    this.icon,
+    this.keyboardType,
+    this.obscureText = false,
+    this.validator,
+    this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return TextFormField(
+      controller: controller,
+      keyboardType: keyboardType,
+      obscureText: obscureText,
+      validator: validator,
+      onChanged: onChanged,
+      decoration: InputDecoration(
+        labelText: label,
+        hintText: hint,
+        prefixIcon: icon == null ? null : Icon(icon),
+      ),
+    );
+  }
+}
+

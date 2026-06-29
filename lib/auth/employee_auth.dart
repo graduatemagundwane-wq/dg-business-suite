@@ -2,6 +2,8 @@ import '../database/local_db.dart';
 import 'activation_service.dart';
 
 class EmployeeAuth {
+  static const int defaultEmployeeLimit = 5;
+
   static final EmployeeAuth instance =
       EmployeeAuth._internal();
 
@@ -13,6 +15,15 @@ class EmployeeAuth {
     required int shopId,
     required String employeeName,
   }) async {
+    final employees =
+        await LocalDatabase.instance.getEmployees(shopId);
+
+    if (employees.length >= defaultEmployeeLimit) {
+      throw StateError(
+        'Default employee limit reached. Contact Double Gee Tech to add more.',
+      );
+    }
+
     final employeeCode =
         ActivationService.instance
             .generateEmployeeCode();

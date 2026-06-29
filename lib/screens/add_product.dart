@@ -328,7 +328,7 @@ if (widget.product == null) {
 
               DropdownButtonFormField<
                   String>(
-                value:
+                initialValue:
                     _selectedCategory,
                 items: _categories
                     .map(

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../models/employee.dart';
 import '../database/employee_services.dart';
+import '../session/app_session.dart';
+import 'add_employee_screen.dart';
 
 class EmployeeManagementScreen extends StatefulWidget {
   const EmployeeManagementScreen({super.key});
@@ -33,6 +35,8 @@ class _EmployeeManagementScreenState
 
   @override
   Widget build(BuildContext context) {
+    final session = SessionScope.of(context);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text("Employee Management"),
@@ -40,8 +44,17 @@ class _EmployeeManagementScreenState
       ),
 
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
-          // TODO: Add Employee Screen
+        onPressed: () async {
+          await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => AddEmployeeScreen(
+                shopId: session.requiredShopId,
+              ),
+            ),
+          );
+
+          await loadEmployees();
         },
         icon: const Icon(Icons.person_add),
         label: const Text("Add Employee"),

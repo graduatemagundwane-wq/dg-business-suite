@@ -17,6 +17,10 @@ class AppSession extends ChangeNotifier {
   String _shopName;
   ActivationStatus _activationStatus;
   String _shopCode;
+  DateTime _lastActivityAt;
+  Duration _autoLogoutTimeout;
+  bool _fingerprintLockEnabled;
+  String? _registeredDeviceId;
 
   AppSession({
     AppRole? role,
@@ -28,6 +32,10 @@ class AppSession extends ChangeNotifier {
     bool shopActivated = false,
     ActivationStatus? activationStatus,
     String shopCode = '',
+    DateTime? lastActivityAt,
+    Duration autoLogoutTimeout = const Duration(minutes: 15),
+    bool fingerprintLockEnabled = false,
+    String? registeredDeviceId,
   })  : _role = role,
         _shopId = shopId,
         _employeeId = employeeId,
@@ -38,7 +46,11 @@ class AppSession extends ChangeNotifier {
             (shopActivated
                 ? ActivationStatus.activated
                 : ActivationStatus.pending),
-        _shopCode = shopCode;
+        _shopCode = shopCode,
+        _lastActivityAt = lastActivityAt ?? DateTime.now(),
+        _autoLogoutTimeout = autoLogoutTimeout,
+        _fingerprintLockEnabled = fingerprintLockEnabled,
+        _registeredDeviceId = registeredDeviceId;
 
   factory AppSession.empty() {
     return AppSession();
@@ -64,9 +76,18 @@ class AppSession extends ChangeNotifier {
   String get shopName => _shopName;
   String get shopCode => _shopCode;
   ActivationStatus get activationStatus => _activationStatus;
+  DateTime get lastActivityAt => _lastActivityAt;
+  Duration get autoLogoutTimeout => _autoLogoutTimeout;
+  bool get fingerprintLockEnabled => _fingerprintLockEnabled;
+  String? get registeredDeviceId => _registeredDeviceId;
   bool get shopActivated => _activationStatus.allowsBusinessAccess;
 
   bool get isAuthenticated => _role != null;
+  bool get isSessionTimedOut {
+    if (!isAuthenticated) return false;
+    return DateTime.now().difference(_lastActivityAt) > _autoLogoutTimeout;
+  }
+  bool get isSessionValid => isAuthenticated && !isSessionTimedOut;
   bool get isOwner => _role == AppRole.owner;
   bool get isEmployee => _role == AppRole.employee;
   bool get isCustomer => _role == AppRole.customer;
@@ -93,6 +114,7 @@ class AppSession extends ChangeNotifier {
     _activationStatus = activationStatus ??
         (activated ? ActivationStatus.activated : ActivationStatus.pending);
     _shopCode = shopCode;
+    _lastActivityAt = DateTime.now();
     notifyListeners();
   }
 
@@ -114,6 +136,7 @@ class AppSession extends ChangeNotifier {
     _activationStatus = activationStatus ??
         (activated ? ActivationStatus.activated : ActivationStatus.pending);
     _shopCode = shopCode;
+    _lastActivityAt = DateTime.now();
     notifyListeners();
   }
 
@@ -129,6 +152,7 @@ class AppSession extends ChangeNotifier {
     _shopName = 'Marketplace';
     _activationStatus = ActivationStatus.activated;
     _shopCode = '';
+    _lastActivityAt = DateTime.now();
     notifyListeners();
   }
 
@@ -136,6 +160,26 @@ class AppSession extends ChangeNotifier {
     required ActivationStatus status,
   }) {
     _activationStatus = status;
+    notifyListeners();
+  }
+
+  void recordActivity() {
+    _lastActivityAt = DateTime.now();
+    notifyListeners();
+  }
+
+  void configureSecurity({
+    Duration? autoLogoutTimeout,
+    bool? fingerprintLockEnabled,
+  }) {
+    _autoLogoutTimeout = autoLogoutTimeout ?? _autoLogoutTimeout;
+    _fingerprintLockEnabled =
+        fingerprintLockEnabled ?? _fingerprintLockEnabled;
+    notifyListeners();
+  }
+
+  void registerDevice(String deviceId) {
+    _registeredDeviceId = deviceId;
     notifyListeners();
   }
 
@@ -148,6 +192,8 @@ class AppSession extends ChangeNotifier {
     _shopName = '';
     _activationStatus = ActivationStatus.pending;
     _shopCode = '';
+    _registeredDeviceId = null;
+    _lastActivityAt = DateTime.now();
     notifyListeners();
   }
 }

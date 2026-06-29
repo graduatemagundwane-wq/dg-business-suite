@@ -4,6 +4,7 @@ import 'session/app_session.dart';
 import 'theme/app_theme.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(DoubleGeePOS(session: AppSession.empty()));
 }
 

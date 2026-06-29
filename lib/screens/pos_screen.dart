@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../database/local_db.dart';
-
+import '../widgets/premium_product_card.dart';
+import '../widgets/premium_cart_item.dart';
+import '../widgets/checkout_summary.dart';
 class POSScreen extends StatefulWidget {
   final int shopId;
   final int employeeId;
@@ -33,8 +35,9 @@ class _POSScreenState extends State<POSScreen> {
   }
 
   Future<void> loadProducts() async {
-    final data = await LocalDatabase.instance
-        .getAllProducts(widget.shopId);
+    final data = await LocalDatabase.instance.getAllProducts(widget.shopId);
+
+    if (!mounted) return;
 
     setState(() {
       products = data;
@@ -43,20 +46,27 @@ class _POSScreenState extends State<POSScreen> {
   }
 
   double get totalAmount {
-    double total = 0;
-
-    for (final item in cartItems) {
-      total +=
-          (item['selling_price'] as num)
-                  .toDouble() *
-              (item['quantity'] as int);
-    }
-
-    return total;
+    return cartItems.fold<double>(
+      0,
+      (sum, item) =>
+          sum +
+          (item['selling_price'] as num).toDouble() *
+              (item['quantity'] as int),
+    );
   }
 
-  void addToCart(
-      Map<String, dynamic> product) {
+  double get totalProfit {
+    return cartItems.fold<double>(
+      0,
+      (sum, item) =>
+          sum +
+          ((item['selling_price'] as num).toDouble() -
+                  (item['buying_price'] as num).toDouble()) *
+              (item['quantity'] as int),
+    );
+  }
+
+  void addToCart(Map<String, dynamic> product) {
     final index = cartItems.indexWhere(
       (item) => item['id'] == product['id'],
     );
@@ -104,171 +114,149 @@ class _POSScreenState extends State<POSScreen> {
   Future<void> checkout() async {
     if (cartItems.isEmpty) return;
 
-    final receiptNumber =
-        await LocalDatabase.instance
-            .generateReceiptNumber();
+    final receiptNumber = await LocalDatabase.instance.generateReceiptNumber();
 
-    final saleId =
-        await LocalDatabase.instance
-            .createSale({
+    final saleId = await LocalDatabase.instance.createSale({
       'shop_id': widget.shopId,
       'employee_id': widget.employeeId,
       'customer_id': null,
       'receipt_number': receiptNumber,
       'total_amount': totalAmount,
-      'total_profit': 0,
-      'sale_date':
-          DateTime.now().toIso8601String(),
+      'total_profit': totalProfit,
+      'sale_date': DateTime.now().toIso8601String(),
     });
 
     for (final item in cartItems) {
-      await LocalDatabase.instance
-          .createSaleItem({
+      final quantity = item['quantity'] as int;
+      final sellingPrice = (item['selling_price'] as num).toDouble();
+      final buyingPrice = (item['buying_price'] as num).toDouble();
+
+      await LocalDatabase.instance.createSaleItem({
         'sale_id': saleId,
         'product_id': item['id'],
-        'product_name':
-            item['product_name'],
-        'buying_price':
-            item['buying_price'],
-        'selling_price':
-            item['selling_price'],
-        'quantity':
-            item['quantity'],
-        'total':
-            (item['selling_price'] as num)
-                    .toDouble() *
-                item['quantity'],
-        'profit':
-            ((item['selling_price']
-                            as num)
-                        .toDouble() -
-                    (item['buying_price']
-                            as num)
-                        .toDouble()) *
-                item['quantity'],
+        'product_name': item['product_name'],
+        'buying_price': buyingPrice,
+        'selling_price': sellingPrice,
+        'quantity': quantity,
+        'total': sellingPrice * quantity,
+        'profit': (sellingPrice - buyingPrice) * quantity,
       });
 
-      await LocalDatabase.instance
-          .deductStock(
+      await LocalDatabase.instance.deductStock(
         productId: item['id'],
-        quantity: item['quantity'],
+        quantity: quantity,
       );
     }
 
+    await LocalDatabase.instance.updateEmployeeStats(
+      employeeId: widget.employeeId,
+      revenue: totalAmount,
+      profit: totalProfit,
+    );
+
     if (!mounted) return;
 
-    ScaffoldMessenger.of(context)
-        .showSnackBar(
+    ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(
-          'Sale Completed - $receiptNumber',
-        ),
+        content: Text('Sale Completed - $receiptNumber'),
       ),
     );
 
     clearCart();
-
     await loadProducts();
   }
-  @override
-Widget build(BuildContext context) {
-  return Scaffold(
-    appBar: AppBar(
-      title: Text(widget.shopName),
-      actions: [
-        IconButton(
-          icon: const Icon(Icons.delete_sweep),
-          tooltip: "Clear Cart",
-          onPressed: cartItems.isEmpty ? null : clearCart,
-        ),
-      ],
-    ),
-    body: isLoading
-        ? const Center(
-            child: CircularProgressIndicator(),
-          )
-        : Column(
-            children: [
-              Expanded(
-                flex: 2,
-                child: GridView.builder(
-                  padding: const EdgeInsets.all(8),
-                  gridDelegate:
-                      const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
-                    childAspectRatio: 1.4,
-                    crossAxisSpacing: 8,
-                    mainAxisSpacing: 8,
-                  ),
-                  itemCount: products.length,
-                  itemBuilder: (context, index) {
-                    final product = products[index];
 
-                    return Card(
-                      elevation: 3,
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(12),
-                        onTap: () => addToCart(product),
-                        child: Padding(
-                          padding: const EdgeInsets.all(8),
-                          child: Column(
-                            mainAxisAlignment:
-                                MainAxisAlignment.center,
-                            children: [
-                              const Icon(
-                                Icons.inventory_2,
-                                size: 34,
-                                color: Colors.blue,
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                product['product_name'],
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                "\$${product['selling_price']}",
-                                style: const TextStyle(
-                                  color: Colors.green,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
-                          ),
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.shopName),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.delete_sweep),
+            tooltip: 'Clear Cart',
+            onPressed: cartItems.isEmpty ? null : clearCart,
+          ),
+        ],
+      ),
+      body: isLoading
+          ? const Center(
+              child: CircularProgressIndicator(),
+            )
+          : Column(
+              children: [
+                Expanded(
+                  flex: 2,
+                  child: GridView.builder(
+                    padding: const EdgeInsets.all(8),
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2,
+                      childAspectRatio: 1.4,
+                      crossAxisSpacing: 8,
+                      mainAxisSpacing: 8,
+                    ),
+                    itemCount: products.length,
+                    itemBuilder: (context, index) {
+                      final product = products[index];
+
+                     return PremiumProductCard(
+  product: product,
+  onTap: () => addToCart(product),
+);
+                    },
+                  ),
+                ),
+                Container(
+                  height: 320,
+                  padding: const EdgeInsets.all(10),
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  child: Column(
+                    children: [
+                      const Text(
+                        'Cart',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
-                    );
-                  },
-                ),
-              ),
+                      const SizedBox(height: 10),
+                      Expanded(
+                        child: cartItems.isEmpty
+                            ? const Center(
+                                child: Text('Cart is empty'),
+                              )
+                            : ListView.builder(
+                                itemCount: cartItems.length,
+                                itemBuilder: (context, index) {
+                                  final item = cartItems[index];
 
-              Container(
-                height: 300,
-                padding: const EdgeInsets.all(10),
-                color: Colors.grey.shade200,
-                child: Column(
-                  children: [
-                    const Text(
-                      "Cart",
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-
-                    const SizedBox(height: 10),
-
-                    Expanded(
-                      child: ListView.builder(
-                        itemCount: cartItems.length,
-                        itemBuilder: (context, index) {
-                          final item = cartItems[index];
-
-                          return Card(
-                            child: ListTile(
-                              title: Text(
-                                item['product_name'],
+                                  return PremiumCartItem(
+  item: item,
+  onIncrease: () => increaseQuantity(index),
+  onDecrease: () => decreaseQuantity(index),
+  onDelete: () => removeItem(index),
+);
+                                },
                               ),
+                      ),
+                      const SizedBox(height: 8),
+                     CheckoutSummary(
+  subtotal: totalAmount,
+  discount: 0,
+  tax: 0,
+  profit: totalProfit,
+  totalItems: cartItems.length,
+  onCheckout: () async {
+    checkout();
+  },
+  onClearCart: clearCart,
+),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+    );
+  }
+}

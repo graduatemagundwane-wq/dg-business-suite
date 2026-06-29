@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 
 import '../services/backup_service.dart';
 import '../services/device_service.dart';
@@ -67,6 +68,64 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          _SectionCard(
+            title: 'Switch Mode',
+            icon: Icons.swap_horiz,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.info_outline),
+                title: const Text('Active Mode'),
+                subtitle: Text(_modeLabel(session.role)),
+              ),
+              if (session.isBusinessAccount && !session.isCustomer)
+                FilledButton.icon(
+                  onPressed: () {
+                    session.switchToCustomerMode();
+                    _showMessage('Switched to Customer Mode');
+                  },
+                  icon: const Icon(Icons.storefront),
+                  label: const Text('Switch to Customer Mode'),
+                ),
+              if (session.isBusinessAccount && session.isCustomer)
+                FilledButton.icon(
+                  onPressed: () {
+                    session.switchToBusinessMode();
+                    _showMessage(
+                      session.accountIsOwner
+                          ? 'Returned to Owner Mode'
+                          : 'Returned to Employee Mode',
+                    );
+                  },
+                  icon: const Icon(Icons.work_outline),
+                  label: Text(
+                    session.accountIsOwner
+                        ? 'Return to Owner Mode'
+                        : 'Return to Employee Mode',
+                  ),
+                ),
+              if (session.accountIsCustomer && kDebugMode) ...[
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: () {
+                    session.switchToDemoOwnerMode();
+                    _showMessage('Switched to Demo Owner Mode');
+                  },
+                  icon: const Icon(Icons.admin_panel_settings),
+                  label: const Text('Demo Owner Mode'),
+                ),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: () {
+                    session.switchToDemoEmployeeMode();
+                    _showMessage('Switched to Demo Employee Mode');
+                  },
+                  icon: const Icon(Icons.badge),
+                  label: const Text('Demo Employee Mode'),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 16),
           _SectionCard(
             title: 'Receipt Settings',
             icon: Icons.receipt_long,
@@ -490,6 +549,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
     );
+  }
+
+  String _modeLabel(AppRole? role) {
+    switch (role) {
+      case AppRole.owner:
+        return 'Owner Mode';
+      case AppRole.employee:
+        return 'Employee Mode';
+      case AppRole.customer:
+        return 'Customer Mode';
+      case null:
+        return 'Signed out';
+    }
   }
 }
 

@@ -10,6 +10,7 @@ enum AppRole {
 
 class AppSession extends ChangeNotifier {
   AppRole? _role;
+  AppRole? _accountRole;
   int? _shopId;
   int? _employeeId;
   int? _customerId;
@@ -24,6 +25,7 @@ class AppSession extends ChangeNotifier {
 
   AppSession({
     AppRole? role,
+    AppRole? accountRole,
     int? shopId,
     int? employeeId,
     int? customerId,
@@ -37,6 +39,7 @@ class AppSession extends ChangeNotifier {
     bool fingerprintLockEnabled = false,
     String? registeredDeviceId,
   })  : _role = role,
+        _accountRole = accountRole ?? role,
         _shopId = shopId,
         _employeeId = employeeId,
         _customerId = customerId,
@@ -69,6 +72,7 @@ class AppSession extends ChangeNotifier {
   }
 
   AppRole? get role => _role;
+  AppRole? get accountRole => _accountRole;
   int? get shopId => _shopId;
   int? get employeeId => _employeeId;
   int? get customerId => _customerId;
@@ -91,8 +95,11 @@ class AppSession extends ChangeNotifier {
   bool get isOwner => _role == AppRole.owner;
   bool get isEmployee => _role == AppRole.employee;
   bool get isCustomer => _role == AppRole.customer;
-  bool get isBusinessAccount => isOwner || isEmployee;
-  bool get mustActivateBusiness => isBusinessAccount && !shopActivated;
+  bool get accountIsOwner => _accountRole == AppRole.owner;
+  bool get accountIsEmployee => _accountRole == AppRole.employee;
+  bool get accountIsCustomer => _accountRole == AppRole.customer;
+  bool get isBusinessAccount => accountIsOwner || accountIsEmployee;
+  bool get mustActivateBusiness => isBusinessAccount && !shopActivated && !isCustomer;
 
   int get requiredShopId => _shopId ?? 1;
   int get requiredEmployeeId => _employeeId ?? 1;
@@ -106,6 +113,7 @@ class AppSession extends ChangeNotifier {
     String shopCode = '',
   }) {
     _role = AppRole.owner;
+    _accountRole = AppRole.owner;
     _shopId = shopId;
     _employeeId = null;
     _customerId = null;
@@ -128,6 +136,7 @@ class AppSession extends ChangeNotifier {
     String shopCode = '',
   }) {
     _role = AppRole.employee;
+    _accountRole = AppRole.employee;
     _shopId = shopId;
     _employeeId = employeeId;
     _customerId = null;
@@ -145,6 +154,7 @@ class AppSession extends ChangeNotifier {
     required String customerName,
   }) {
     _role = AppRole.customer;
+    _accountRole = AppRole.customer;
     _shopId = null;
     _employeeId = null;
     _customerId = customerId;
@@ -154,6 +164,46 @@ class AppSession extends ChangeNotifier {
     _shopCode = '';
     _lastActivityAt = DateTime.now();
     notifyListeners();
+  }
+
+  void switchToCustomerMode() {
+    if (!isAuthenticated) return;
+
+    _role = AppRole.customer;
+    _customerId ??= 1;
+    _lastActivityAt = DateTime.now();
+    notifyListeners();
+  }
+
+  void switchToBusinessMode() {
+    if (!isAuthenticated || !isBusinessAccount) return;
+
+    _role = _accountRole;
+    _lastActivityAt = DateTime.now();
+    notifyListeners();
+  }
+
+  void switchToDemoOwnerMode() {
+    signInOwner(
+      shopId: 1,
+      ownerName: 'Demo Owner',
+      shopName: 'Double Gee Demo Shop',
+      activated: true,
+      activationStatus: ActivationStatus.activated,
+      shopCode: 'DG-DEMO-OWNER',
+    );
+  }
+
+  void switchToDemoEmployeeMode() {
+    signInEmployee(
+      shopId: 1,
+      employeeId: 1,
+      employeeName: 'Demo Employee',
+      shopName: 'Double Gee Demo Shop',
+      activated: true,
+      activationStatus: ActivationStatus.activated,
+      shopCode: 'DG-DEMO-EMPLOYEE',
+    );
   }
 
   void updateActivation({
@@ -185,6 +235,7 @@ class AppSession extends ChangeNotifier {
 
   void signOut() {
     _role = null;
+    _accountRole = null;
     _shopId = null;
     _employeeId = null;
     _customerId = null;

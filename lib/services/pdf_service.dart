@@ -5,6 +5,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
+import 'dashboard_service.dart';
 import 'receipt_service.dart';
 
 class PdfService {
@@ -111,6 +112,57 @@ class PdfService {
       receipt,
       paperSize: ReceiptPaperSize.a4Invoice,
       documentType: documentType,
+    );
+  }
+
+  Future<Uint8List> buildReportPdf(ReportSummary report) async {
+    final pdf = pw.Document();
+
+    pdf.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(18 * PdfPageFormat.mm),
+        build: (_) => [
+          pw.Text(
+            'Double Gee Tech Business Suite',
+            style: pw.TextStyle(
+              fontSize: 18,
+              fontWeight: pw.FontWeight.bold,
+              color: PdfColors.blue800,
+            ),
+          ),
+          pw.SizedBox(height: 6),
+          pw.Text(
+            report.title,
+            style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold),
+          ),
+          pw.Divider(),
+          _reportRow('Sales', _money(report.sales)),
+          _reportRow('Profit', _money(report.profit)),
+          _reportRow('Expenses', _money(report.expenses)),
+          _reportRow('Net Profit', _money(report.netProfit)),
+          _reportRow('Low Stock Items', report.lowStockItems.toString()),
+          _reportRow('Out Of Stock Items', report.outOfStockItems.toString()),
+          _reportRow('Inventory Value', _money(report.inventoryValue)),
+          pw.SizedBox(height: 12),
+          _reportRow('Best Employee', report.bestEmployee.name),
+          _reportRow('Best Product', report.bestProduct.name),
+          pw.SizedBox(height: 24),
+          pw.Text('Generated locally from offline SQLite data.'),
+        ],
+      ),
+    );
+
+    return pdf.save();
+  }
+
+  Future<void> shareReportPdf(ReportSummary report) async {
+    final bytes = await buildReportPdf(report);
+    final filename = report.title.toLowerCase().replaceAll(' ', '_');
+
+    await Printing.sharePdf(
+      bytes: bytes,
+      filename: '$filename.pdf',
     );
   }
 
@@ -305,6 +357,19 @@ class PdfService {
         value,
         textAlign: alignRight ? pw.TextAlign.right : pw.TextAlign.left,
         style: bold ? pw.TextStyle(fontWeight: pw.FontWeight.bold) : null,
+      ),
+    );
+  }
+
+  pw.Widget _reportRow(String label, String value) {
+    return pw.Padding(
+      padding: const pw.EdgeInsets.symmetric(vertical: 5),
+      child: pw.Row(
+        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+        children: [
+          pw.Text(label),
+          pw.Text(value, style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+        ],
       ),
     );
   }

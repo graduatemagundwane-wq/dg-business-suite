@@ -46,6 +46,9 @@ class _InventoryScreenState extends State<InventoryScreen> {
   int lowStockProducts = 0;
   int outOfStockProducts = 0;
   double inventoryValue = 0;
+  String bestSellingProduct = 'No sales yet';
+  String highestProfitProduct = 'No products yet';
+  String slowMovingProduct = 'No products yet';
 
   bool _loading = true;
   bool _stockTakingMode = false;
@@ -70,6 +73,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
 
   Future<void> _loadProducts() async {
     final products = await LocalDatabase.instance.getAllProducts(widget.shopId);
+    final insights = await _loadInventoryInsights();
 
     if (!mounted) return;
 
@@ -77,8 +81,67 @@ class _InventoryScreenState extends State<InventoryScreen> {
       _products = products;
       _filteredProducts = _applyFilters(products);
       _updateStats(products);
+      bestSellingProduct = insights.bestSellingProduct;
+      highestProfitProduct = insights.highestProfitProduct;
+      slowMovingProduct = insights.slowMovingProduct;
       _loading = false;
     });
+  }
+
+  Future<_InventoryInsights> _loadInventoryInsights() async {
+    final db = await LocalDatabase.instance.database;
+    final bestSellingRows = await db.rawQuery(
+      '''
+      SELECT si.product_name, COALESCE(SUM(si.quantity), 0) AS sold
+      FROM sale_items si
+      INNER JOIN sales s ON s.id = si.sale_id
+      WHERE s.shop_id = ?
+      GROUP BY si.product_id, si.product_name
+      ORDER BY sold DESC
+      LIMIT 1
+      ''',
+      [widget.shopId],
+    );
+    final highestProfitRows = await db.rawQuery(
+      '''
+      SELECT product_name, (selling_price - buying_price) AS profit
+      FROM products
+      WHERE shop_id = ?
+      ORDER BY profit DESC
+      LIMIT 1
+      ''',
+      [widget.shopId],
+    );
+    final slowMovingRows = await db.rawQuery(
+      '''
+      SELECT
+        p.product_name,
+        COALESCE(SUM(CASE WHEN s.id IS NOT NULL THEN si.quantity ELSE 0 END), 0)
+          AS sold
+      FROM products p
+      LEFT JOIN sale_items si ON si.product_id = p.id
+      LEFT JOIN sales s ON s.id = si.sale_id AND s.shop_id = p.shop_id
+      WHERE p.shop_id = ?
+      GROUP BY p.id, p.product_name
+      ORDER BY sold ASC, p.stock_quantity DESC
+      LIMIT 1
+      ''',
+      [widget.shopId],
+    );
+
+    return _InventoryInsights(
+      bestSellingProduct: bestSellingRows.isEmpty
+          ? 'No sales yet'
+          : (bestSellingRows.first['product_name'] ?? 'No sales yet').toString(),
+      highestProfitProduct: highestProfitRows.isEmpty
+          ? 'No products yet'
+          : (highestProfitRows.first['product_name'] ?? 'No products yet')
+              .toString(),
+      slowMovingProduct: slowMovingRows.isEmpty
+          ? 'No products yet'
+          : (slowMovingRows.first['product_name'] ?? 'No products yet')
+              .toString(),
+    );
   }
 
   void _updateStats(List<Map<String, dynamic>> products) {
@@ -647,7 +710,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
                               ),
                             ),
                             const SizedBox(height: 16),
-                            _buildStatsGrid(crossAxisCount: isWide ? 4 : 2),
+                            _buildStatsGrid(crossAxisCount: isWide ? 4 : 1),
                             const SizedBox(height: 16),
                             _buildInventoryHealthCard(),
                             const SizedBox(height: 16),
@@ -689,7 +752,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
                             crossAxisSpacing: 14,
                             mainAxisSpacing: 14,
                             childAspectRatio: isWide ? 1.05 : 1.12,
-                            mainAxisExtent: 360,
+                            mainAxisExtent: isWide ? 390 : 470,
                           ),
                           itemBuilder: (context, index) {
                             return _buildProductCard(_filteredProducts[index]);
@@ -710,7 +773,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
       physics: const NeverScrollableScrollPhysics(),
       crossAxisSpacing: 12,
       mainAxisSpacing: 12,
-      childAspectRatio: crossAxisCount == 4 ? 1.55 : 1.45,
+      childAspectRatio: crossAxisCount == 4 ? 1.05 : 2.1,
       children: [
         _dashboardCard(
           Icons.inventory_2,
@@ -963,17 +1026,17 @@ class _InventoryScreenState extends State<InventoryScreen> {
                   label: 'Low Stock Count',
                   value: lowStockProducts.toString(),
                 ),
-                const _HealthChip(
+                _HealthChip(
                   label: 'Best Selling Product',
-                  value: 'Coming soon',
+                  value: bestSellingProduct,
                 ),
-                const _HealthChip(
+                _HealthChip(
                   label: 'Highest Profit Product',
-                  value: 'Coming soon',
+                  value: highestProfitProduct,
                 ),
-                const _HealthChip(
+                _HealthChip(
                   label: 'Slow Moving Product',
-                  value: 'Coming soon',
+                  value: slowMovingProduct,
                 ),
               ],
             ),
@@ -1133,6 +1196,18 @@ class _InventoryScreenState extends State<InventoryScreen> {
         return 'Correction';
     }
   }
+}
+
+class _InventoryInsights {
+  final String bestSellingProduct;
+  final String highestProfitProduct;
+  final String slowMovingProduct;
+
+  const _InventoryInsights({
+    required this.bestSellingProduct,
+    required this.highestProfitProduct,
+    required this.slowMovingProduct,
+  });
 }
 
 class _StockTakingCard extends StatelessWidget {

@@ -256,7 +256,7 @@ class ReceiptService {
         s.sale_date,
         COALESCE(e.employee_name, 'Unknown Cashier') AS cashier_name,
         COALESCE(c.customer_name, 'Walk-in Customer') AS customer_name,
-        c.phone AS customer_phone
+        c.phone_number AS customer_phone
       FROM sales s
       LEFT JOIN employees e ON e.id = s.employee_id
       LEFT JOIN customers c ON c.id = s.customer_id
@@ -293,7 +293,7 @@ class ReceiptService {
         s.*,
         COALESCE(e.employee_name, 'Unknown Cashier') AS cashier_name,
         c.customer_name,
-        c.phone AS customer_phone
+        c.phone_number AS customer_phone
       FROM sales s
       LEFT JOIN employees e ON e.id = s.employee_id
       LEFT JOIN customers c ON c.id = s.customer_id

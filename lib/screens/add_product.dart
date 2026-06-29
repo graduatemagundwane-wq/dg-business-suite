@@ -86,8 +86,10 @@ void initState() {
     _imagePath =
         product['image_path'] ?? '';
 
-    _selectedCategory =
-        product['category_id'].toString();
+    if (product['category_id'] != null) {
+      _selectedCategory =
+          product['category_id'].toString();
+    }
   } else if (widget.initialBarcode != null) {
     _barcodeController.text = widget.initialBarcode!;
   }
@@ -101,7 +103,10 @@ void initState() {
     setState(() {
       _categories = categories;
 
-      if (_categories.isNotEmpty) {
+      if (widget.product != null &&
+          widget.product!['category_id'] != null) {
+        _selectedCategory = widget.product!['category_id'].toString();
+      } else if (_categories.isNotEmpty) {
         _selectedCategory =
             _categories.first['id']
                 .toString();
@@ -144,16 +149,7 @@ void initState() {
       return;
     }
 
-    if (_selectedCategory == null) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(
-        const SnackBar(
-          content: Text(
-              'Please create/select a category'),
-        ),
-      );
-      return;
-    }
+    final categoryId = await _resolveCategoryId();
 
     setState(() {
       _saving = true;
@@ -161,8 +157,7 @@ void initState() {
 
     final productData = {
       'shop_id': widget.shopId,
-      'category_id':
-          int.parse(_selectedCategory!),
+      'category_id': categoryId,
       'product_name':
           _nameController.text.trim(),
       'barcode':
@@ -208,6 +203,36 @@ if (widget.product == null) {
     if (mounted) {
       Navigator.pop(context, true);
     }
+  }
+
+  Future<int> _resolveCategoryId() async {
+    if (_selectedCategory != null) {
+      return int.parse(_selectedCategory!);
+    }
+
+    for (final category in _categories) {
+      final name = (category['category_name'] ?? '').toString().toLowerCase();
+      if (name == 'general') {
+        return category['id'] as int;
+      }
+    }
+
+    final id = await LocalDatabase.instance.createCategory(
+      shopId: widget.shopId,
+      categoryName: 'General',
+    );
+
+    if (mounted) {
+      setState(() {
+        _categories = [
+          ..._categories,
+          {'id': id, 'category_name': 'General'},
+        ];
+        _selectedCategory = id.toString();
+      });
+    }
+
+    return id;
   }
 
   Widget _buildImagePreview() {

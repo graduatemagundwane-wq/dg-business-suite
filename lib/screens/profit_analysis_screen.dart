@@ -71,6 +71,14 @@ class _ProfitAnalysisScreenState extends State<ProfitAnalysisScreen> {
 
           final report = snapshot.data!;
 
+          if (report.sales == 0 && report.profit == 0) {
+            return const PremiumEmptyState(
+              icon: Icons.trending_up,
+              title: 'No profit data yet',
+              message: 'Profit analysis will appear after the first sale.',
+            );
+          }
+
           return ResponsiveLayout(
             child: ListView(
               children: [

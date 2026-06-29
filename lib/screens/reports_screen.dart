@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/dashboard_service.dart';
+import '../services/pdf_service.dart';
 import '../theme/app_tokens.dart';
 import '../widgets/dashboard_card.dart';
 import '../widgets/loading_widget.dart';
@@ -118,9 +119,9 @@ class _ReportCard extends StatelessWidget {
                 ),
               ),
               OutlinedButton.icon(
-                onPressed: null,
+                onPressed: () => PdfService.instance.shareReportPdf(report),
                 icon: const Icon(Icons.picture_as_pdf),
-                label: const Text('PDF Soon'),
+                label: const Text('PDF'),
               ),
             ],
           ),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 
 import '../auth/activation_service.dart';
 import '../auth/auth_repository.dart';
@@ -113,6 +114,36 @@ class _LoginScreenState extends State<LoginScreen> {
     });
   }
 
+  void _loginDemoOwner(AppSession session) {
+    session.signInOwner(
+      shopId: 1,
+      ownerName: 'Demo Owner',
+      shopName: 'Double Gee Demo Shop',
+      activated: true,
+      activationStatus: ActivationStatus.activated,
+      shopCode: 'DG-DEMO-OWNER',
+    );
+  }
+
+  void _loginDemoEmployee(AppSession session) {
+    session.signInEmployee(
+      shopId: 1,
+      employeeId: 1,
+      employeeName: 'Demo Employee',
+      shopName: 'Double Gee Demo Shop',
+      activated: true,
+      activationStatus: ActivationStatus.activated,
+      shopCode: 'DG-DEMO-EMPLOYEE',
+    );
+  }
+
+  void _loginDemoCustomer(AppSession session) {
+    session.signInCustomer(
+      customerId: 1,
+      customerName: 'Demo Customer',
+    );
+  }
+
   Future<void> _runLogin(Future<void> Function() action) async {
     setState(() {
       _loading = true;
@@ -220,6 +251,39 @@ class _LoginScreenState extends State<LoginScreen> {
                         }
                       },
                     ),
+                    if (kDebugMode) ...[
+                      const SizedBox(height: AppSpacing.md),
+                      const Divider(),
+                      const SizedBox(height: AppSpacing.sm),
+                      Text(
+                        'Demo Login',
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.titleSmall,
+                      ),
+                      const SizedBox(height: AppSpacing.sm),
+                      Wrap(
+                        spacing: AppSpacing.sm,
+                        runSpacing: AppSpacing.sm,
+                        alignment: WrapAlignment.center,
+                        children: [
+                          OutlinedButton.icon(
+                            onPressed: () => _loginDemoOwner(session),
+                            icon: const Icon(Icons.admin_panel_settings),
+                            label: const Text('Demo Owner'),
+                          ),
+                          OutlinedButton.icon(
+                            onPressed: () => _loginDemoEmployee(session),
+                            icon: const Icon(Icons.badge),
+                            label: const Text('Demo Employee'),
+                          ),
+                          OutlinedButton.icon(
+                            onPressed: () => _loginDemoCustomer(session),
+                            icon: const Icon(Icons.person),
+                            label: const Text('Demo Customer'),
+                          ),
+                        ],
+                      ),
+                    ],
                     const SizedBox(height: AppSpacing.sm),
                     Text(
                       'Business accounts require activation. Customers are free.',

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 
 import '../auth/activation_service.dart';
 import '../auth/auth_repository.dart';
@@ -144,6 +145,27 @@ class _ActivationScreenState extends State<ActivationScreen> {
                       icon: const Icon(Icons.refresh),
                       label: const Text('Check Server Status'),
                     ),
+                    if (kDebugMode) ...[
+                      const SizedBox(height: AppSpacing.sm),
+                      OutlinedButton.icon(
+                        onPressed: () {
+                          session.signInOwner(
+                            shopId: session.requiredShopId,
+                            ownerName: 'Demo Owner',
+                            shopName: session.shopName.isEmpty
+                                ? 'Double Gee Demo Shop'
+                                : session.shopName,
+                            activated: true,
+                            activationStatus: ActivationStatus.activated,
+                            shopCode: session.shopCode.isEmpty
+                                ? 'DG-DEMO-OWNER'
+                                : session.shopCode,
+                          );
+                        },
+                        icon: const Icon(Icons.developer_mode),
+                        label: const Text('Continue as Demo Owner'),
+                      ),
+                    ],
                     TextButton(
                       onPressed: session.signOut,
                       child: const Text('Log out'),

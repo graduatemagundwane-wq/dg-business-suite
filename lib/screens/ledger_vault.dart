@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 
+import 'profit_analysis_screen.dart';
+import 'reports_screen.dart';
+import 'sales_history_screen.dart';
+
 class LedgerVaultScreen extends StatefulWidget {
   const LedgerVaultScreen({super.key});
 
@@ -60,27 +64,60 @@ class _LedgerVaultScreenState
 
             Expanded(
               child: ListView(
-                children: const [
+                children: [
 
                   ListTile(
                     leading:
-                        Icon(Icons.receipt),
+                        const Icon(Icons.receipt),
                     title:
-                        Text("Sales History"),
+                        const Text("Sales History"),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => _open(const SalesHistoryScreen()),
                   ),
 
                   ListTile(
                     leading:
-                        Icon(Icons.bar_chart),
+                        const Icon(Icons.today),
                     title:
-                        Text("Monthly Reports"),
+                        const Text("Daily Reports"),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => _open(const ReportsScreen()),
                   ),
 
                   ListTile(
                     leading:
-                        Icon(Icons.picture_as_pdf),
+                        const Icon(Icons.date_range),
                     title:
-                        Text("PDF Reports"),
+                        const Text("Weekly Reports"),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => _open(const ReportsScreen()),
+                  ),
+
+                  ListTile(
+                    leading:
+                        const Icon(Icons.bar_chart),
+                    title:
+                        const Text("Monthly Reports"),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => _open(const ReportsScreen()),
+                  ),
+
+                  ListTile(
+                    leading:
+                        const Icon(Icons.picture_as_pdf),
+                    title:
+                        const Text("PDF Reports"),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => _open(const ReportsScreen()),
+                  ),
+
+                  ListTile(
+                    leading:
+                        const Icon(Icons.trending_up),
+                    title:
+                        const Text("Profit Analysis"),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => _open(const ProfitAnalysisScreen()),
                   ),
 
                 ],
@@ -89,6 +126,13 @@ class _LedgerVaultScreenState
           ],
         ),
       ),
+    );
+  }
+
+  void _open(Widget screen) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => screen),
     );
   }
 }

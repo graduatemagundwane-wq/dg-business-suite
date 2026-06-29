@@ -32,6 +32,7 @@ class _ReceiptHistoryScreenState extends State<ReceiptHistoryScreen> {
   List<ReceiptHistoryEntry> _receipts = [];
   List<ReceiptHistoryEntry> _filteredReceipts = [];
   bool _loading = true;
+  String? _error;
   _ReceiptFilter _filter = _ReceiptFilter.all;
 
   @override
@@ -47,17 +48,31 @@ class _ReceiptHistoryScreenState extends State<ReceiptHistoryScreen> {
   }
 
   Future<void> _loadReceipts() async {
-    final receipts = await ReceiptService.instance.getReceiptHistory(
-      shopId: widget.shopId,
-    );
-
-    if (!mounted) return;
-
     setState(() {
-      _receipts = receipts;
-      _filteredReceipts = _applyFilters(receipts, _searchController.text);
-      _loading = false;
+      _loading = true;
+      _error = null;
     });
+
+    try {
+      final receipts = await ReceiptService.instance.getReceiptHistory(
+        shopId: widget.shopId,
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        _receipts = receipts;
+        _filteredReceipts = _applyFilters(receipts, _searchController.text);
+        _loading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+
+      setState(() {
+        _error = 'Receipt history could not be loaded.';
+        _loading = false;
+      });
+    }
   }
 
   void _search(String value) {
@@ -204,6 +219,26 @@ class _ReceiptHistoryScreenState extends State<ReceiptHistoryScreen> {
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
+          : _error != null
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.error_outline, size: 56),
+                        const SizedBox(height: 12),
+                        Text(_error!, textAlign: TextAlign.center),
+                        const SizedBox(height: 12),
+                        FilledButton.icon(
+                          onPressed: _loadReceipts,
+                          icon: const Icon(Icons.refresh),
+                          label: const Text('Retry'),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
           : Column(
               children: [
                 Padding(
@@ -236,7 +271,25 @@ class _ReceiptHistoryScreenState extends State<ReceiptHistoryScreen> {
                 Expanded(
                   child: _filteredReceipts.isEmpty
                       ? const Center(
-                          child: Text('No receipts found'),
+                          child: Padding(
+                            padding: EdgeInsets.all(24),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.receipt_long, size: 56),
+                                SizedBox(height: 12),
+                                Text(
+                                  'No receipts found',
+                                  style: TextStyle(fontWeight: FontWeight.bold),
+                                ),
+                                SizedBox(height: 6),
+                                Text(
+                                  'Completed sales receipts will appear here.',
+                                  textAlign: TextAlign.center,
+                                ),
+                              ],
+                            ),
+                          ),
                         )
                       : ListView.builder(
                           padding: const EdgeInsets.all(12),

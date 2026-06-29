@@ -7,6 +7,7 @@ import '../widgets/pos_search_bar.dart';
 import '../widgets/premium_cart_item.dart';
 import '../widgets/premium_product_card.dart';
 import '../widgets/receipt_preview_dialog.dart';
+import 'barcode_scan.dart';
 
 class POSScreen extends StatefulWidget {
   final int shopId;
@@ -91,6 +92,26 @@ class _POSScreenState extends State<POSScreen> {
     setState(() {
       filteredProducts = _filterProducts(products, value);
     });
+  }
+
+  Future<void> _scanBarcode() async {
+    final barcode = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(builder: (_) => const BarcodeScanScreen()),
+    );
+
+    if (barcode == null || barcode.trim().isEmpty) return;
+
+    _searchController.text = barcode.trim();
+    searchProducts(barcode);
+
+    final match = products.where((product) {
+      return (product['barcode'] ?? '').toString().trim() == barcode.trim();
+    }).toList();
+
+    if (match.length == 1) {
+      addToCart(match.first);
+    }
   }
 
   List<Map<String, dynamic>> _filterProducts(
@@ -315,6 +336,7 @@ class _POSScreenState extends State<POSScreen> {
                             products: filteredProducts,
                             searchController: _searchController,
                             onSearch: searchProducts,
+                            onScanBarcode: _scanBarcode,
                             onAddProduct: addToCart,
                           ),
                         ),
@@ -342,6 +364,7 @@ class _POSScreenState extends State<POSScreen> {
                       products: filteredProducts,
                       searchController: _searchController,
                       onSearch: searchProducts,
+                      onScanBarcode: _scanBarcode,
                       onAddProduct: addToCart,
                     ),
             ),
@@ -353,12 +376,14 @@ class _ProductsPanel extends StatelessWidget {
   final List<Map<String, dynamic>> products;
   final TextEditingController searchController;
   final ValueChanged<String> onSearch;
+  final VoidCallback onScanBarcode;
   final ValueChanged<Map<String, dynamic>> onAddProduct;
 
   const _ProductsPanel({
     required this.products,
     required this.searchController,
     required this.onSearch,
+    required this.onScanBarcode,
     required this.onAddProduct,
   });
 
@@ -391,6 +416,7 @@ class _ProductsPanel extends StatelessWidget {
                     PosSearchBar(
                       controller: searchController,
                       onChanged: onSearch,
+                      onScanBarcode: onScanBarcode,
                     ),
                   ],
                 ),

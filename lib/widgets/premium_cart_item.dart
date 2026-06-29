@@ -47,6 +47,15 @@ class PremiumCartItem extends StatelessWidget {
                       width: 65,
                       height: 65,
                       fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Container(
+                        width: 65,
+                        height: 65,
+                        color: Colors.blue.shade50,
+                        child: const Icon(
+                          Icons.broken_image_outlined,
+                          color: Colors.blue,
+                        ),
+                      ),
                     )
                   : Container(
                       width: 65,

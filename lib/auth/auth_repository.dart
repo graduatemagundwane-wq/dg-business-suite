@@ -1,4 +1,5 @@
 import '../database/local_db.dart';
+import 'activation_service.dart';
 import 'customer_auth.dart';
 import 'employee_auth.dart';
 import 'owner_auth.dart';
@@ -42,7 +43,14 @@ class AuthRepository {
   Future<bool> activateShop({
     required String shopCode,
     required String activationCode,
-  }) {
+  }) async {
+    final remoteStatus = await ActivationService.instance.verifyActivationCode(
+      shopCode: shopCode.trim(),
+      activationCode: activationCode.trim(),
+    );
+
+    if (remoteStatus.allowsBusinessAccess) return true;
+
     return OwnerAuth.instance.activateShop(
       shopCode: shopCode.trim(),
       activationCode: activationCode.trim(),
@@ -52,5 +60,15 @@ class AuthRepository {
   bool shopIsActivated(Map<String, dynamic>? shop) {
     return shop?['activated'] == 1;
   }
-}
 
+  Future<ActivationStatus> resolveActivationStatus(
+    Map<String, dynamic>? shop,
+  ) async {
+    if (shop == null) return ActivationStatus.pending;
+
+    return ActivationService.instance.checkRemoteActivation(
+      shopCode: (shop['shop_code'] ?? '').toString(),
+      locallyActivated: shopIsActivated(shop),
+    );
+  }
+}

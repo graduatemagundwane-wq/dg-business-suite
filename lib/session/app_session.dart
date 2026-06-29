@@ -1,5 +1,7 @@
 import 'package:flutter/widgets.dart';
 
+import '../auth/activation_service.dart';
+
 enum AppRole {
   owner,
   employee,
@@ -13,7 +15,8 @@ class AppSession extends ChangeNotifier {
   int? _customerId;
   String _displayName;
   String _shopName;
-  bool _shopActivated;
+  ActivationStatus _activationStatus;
+  String _shopCode;
 
   AppSession({
     AppRole? role,
@@ -23,13 +26,19 @@ class AppSession extends ChangeNotifier {
     String displayName = '',
     String shopName = '',
     bool shopActivated = false,
+    ActivationStatus? activationStatus,
+    String shopCode = '',
   })  : _role = role,
         _shopId = shopId,
         _employeeId = employeeId,
         _customerId = customerId,
         _displayName = displayName,
         _shopName = shopName,
-        _shopActivated = shopActivated;
+        _activationStatus = activationStatus ??
+            (shopActivated
+                ? ActivationStatus.activated
+                : ActivationStatus.pending),
+        _shopCode = shopCode;
 
   factory AppSession.empty() {
     return AppSession();
@@ -43,6 +52,7 @@ class AppSession extends ChangeNotifier {
       displayName: 'Owner',
       shopName: 'Double Gee POS',
       shopActivated: true,
+      activationStatus: ActivationStatus.activated,
     );
   }
 
@@ -52,14 +62,16 @@ class AppSession extends ChangeNotifier {
   int? get customerId => _customerId;
   String get displayName => _displayName;
   String get shopName => _shopName;
-  bool get shopActivated => _shopActivated;
+  String get shopCode => _shopCode;
+  ActivationStatus get activationStatus => _activationStatus;
+  bool get shopActivated => _activationStatus.allowsBusinessAccess;
 
   bool get isAuthenticated => _role != null;
   bool get isOwner => _role == AppRole.owner;
   bool get isEmployee => _role == AppRole.employee;
   bool get isCustomer => _role == AppRole.customer;
   bool get isBusinessAccount => isOwner || isEmployee;
-  bool get mustActivateBusiness => isBusinessAccount && !_shopActivated;
+  bool get mustActivateBusiness => isBusinessAccount && !shopActivated;
 
   int get requiredShopId => _shopId ?? 1;
   int get requiredEmployeeId => _employeeId ?? 1;
@@ -69,6 +81,8 @@ class AppSession extends ChangeNotifier {
     required String ownerName,
     required String shopName,
     required bool activated,
+    ActivationStatus? activationStatus,
+    String shopCode = '',
   }) {
     _role = AppRole.owner;
     _shopId = shopId;
@@ -76,7 +90,9 @@ class AppSession extends ChangeNotifier {
     _customerId = null;
     _displayName = ownerName;
     _shopName = shopName;
-    _shopActivated = activated;
+    _activationStatus = activationStatus ??
+        (activated ? ActivationStatus.activated : ActivationStatus.pending);
+    _shopCode = shopCode;
     notifyListeners();
   }
 
@@ -86,6 +102,8 @@ class AppSession extends ChangeNotifier {
     required String employeeName,
     required String shopName,
     required bool activated,
+    ActivationStatus? activationStatus,
+    String shopCode = '',
   }) {
     _role = AppRole.employee;
     _shopId = shopId;
@@ -93,7 +111,9 @@ class AppSession extends ChangeNotifier {
     _customerId = null;
     _displayName = employeeName;
     _shopName = shopName;
-    _shopActivated = activated;
+    _activationStatus = activationStatus ??
+        (activated ? ActivationStatus.activated : ActivationStatus.pending);
+    _shopCode = shopCode;
     notifyListeners();
   }
 
@@ -107,14 +127,15 @@ class AppSession extends ChangeNotifier {
     _customerId = customerId;
     _displayName = customerName;
     _shopName = 'Marketplace';
-    _shopActivated = true;
+    _activationStatus = ActivationStatus.activated;
+    _shopCode = '';
     notifyListeners();
   }
 
   void updateActivation({
-    required bool activated,
+    required ActivationStatus status,
   }) {
-    _shopActivated = activated;
+    _activationStatus = status;
     notifyListeners();
   }
 
@@ -125,7 +146,8 @@ class AppSession extends ChangeNotifier {
     _customerId = null;
     _displayName = '';
     _shopName = '';
-    _shopActivated = false;
+    _activationStatus = ActivationStatus.pending;
+    _shopCode = '';
     notifyListeners();
   }
 }

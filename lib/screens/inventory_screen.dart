@@ -3,14 +3,25 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../database/local_db.dart';
+import '../services/barcode_service.dart';
 import '../theme/app_theme.dart';
 import 'add_product.dart';
+import 'barcode_scan.dart';
 
 enum _InventoryFilter {
   all,
   lowStock,
   outOfStock,
   marketplace,
+}
+
+enum _StockAdjustmentReason {
+  manualCount,
+  damaged,
+  expired,
+  returned,
+  supplierRestock,
+  correction,
 }
 
 class InventoryScreen extends StatefulWidget {
@@ -37,7 +48,10 @@ class _InventoryScreenState extends State<InventoryScreen> {
   double inventoryValue = 0;
 
   bool _loading = true;
+  bool _stockTakingMode = false;
   _InventoryFilter _selectedFilter = _InventoryFilter.all;
+  final Map<int, TextEditingController> _countControllers = {};
+  final List<_StockAdjustmentRecord> _adjustmentHistory = [];
 
   @override
   void initState() {
@@ -48,6 +62,9 @@ class _InventoryScreenState extends State<InventoryScreen> {
   @override
   void dispose() {
     _searchController.dispose();
+    for (final controller in _countControllers.values) {
+      controller.dispose();
+    }
     super.dispose();
   }
 
@@ -172,6 +189,22 @@ class _InventoryScreenState extends State<InventoryScreen> {
     }
   }
 
+  Future<void> _openAddProductWithBarcode(String barcode) async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AddProductScreen(
+          shopId: widget.shopId,
+          initialBarcode: barcode,
+        ),
+      ),
+    );
+
+    if (result == true) {
+      await _loadProducts();
+    }
+  }
+
   Future<void> _openEditProduct(Map<String, dynamic> product) async {
     final result = await Navigator.push(
       context,
@@ -184,6 +217,160 @@ class _InventoryScreenState extends State<InventoryScreen> {
     );
 
     if (result == true) {
+      await _loadProducts();
+    }
+  }
+
+  Future<void> _scanBarcode() async {
+    final barcode = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const BarcodeScanScreen(),
+      ),
+    );
+
+    if (barcode == null || barcode.trim().isEmpty) return;
+
+    final product = await BarcodeService.instance.findProductByBarcode(
+      shopId: widget.shopId,
+      barcode: barcode,
+    );
+
+    if (!mounted) return;
+
+    if (product != null) {
+      _searchController.text = barcode;
+      _search(barcode);
+      await _showQuickStockUpdate(product);
+      return;
+    }
+
+    final create = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Barcode Not Found'),
+        content: Text('Create a new product with barcode $barcode?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Create Product'),
+          ),
+        ],
+      ),
+    );
+
+    if (create == true) {
+      await _openAddProductWithBarcode(barcode);
+    }
+  }
+
+  Future<void> _showQuickStockUpdate(Map<String, dynamic> product) async {
+    final stockController = TextEditingController(
+      text: _asInt(product['stock_quantity']).toString(),
+    );
+    var reason = _StockAdjustmentReason.manualCount;
+
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: Text((product['product_name'] ?? 'Product').toString()),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Current Stock: ${product['stock_quantity'] ?? 0}'),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: stockController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'New Stock Count',
+                      prefixIcon: Icon(Icons.inventory),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<_StockAdjustmentReason>(
+                    initialValue: reason,
+                    decoration: const InputDecoration(labelText: 'Reason'),
+                    items: _StockAdjustmentReason.values
+                        .map(
+                          (value) => DropdownMenuItem(
+                            value: value,
+                            child: Text(_reasonLabel(value)),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) {
+                      if (value == null) return;
+                      setDialogState(() => reason = value);
+                    },
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (saved != true) {
+      stockController.dispose();
+      return;
+    }
+
+    final previous = _asInt(product['stock_quantity']);
+    final next = int.tryParse(stockController.text.trim()) ?? previous;
+    stockController.dispose();
+
+    await _saveStockAdjustment(
+      product: product,
+      previousQuantity: previous,
+      newQuantity: next,
+      reason: reason,
+    );
+  }
+
+  Future<void> _saveStockAdjustment({
+    required Map<String, dynamic> product,
+    required int previousQuantity,
+    required int newQuantity,
+    required _StockAdjustmentReason reason,
+    bool reload = true,
+  }) async {
+    final updatedProduct = Map<String, dynamic>.from(product);
+    updatedProduct['stock_quantity'] = newQuantity;
+    await LocalDatabase.instance.updateProduct(updatedProduct);
+
+    _adjustmentHistory.insert(
+      0,
+      _StockAdjustmentRecord(
+        productName: (product['product_name'] ?? 'Unknown Product').toString(),
+        previousQuantity: previousQuantity,
+        newQuantity: newQuantity,
+        reason: _reasonLabel(reason),
+        employee: 'Current User',
+        createdAt: DateTime.now(),
+      ),
+    );
+
+    if (reload) {
       await _loadProducts();
     }
   }
@@ -266,6 +453,22 @@ class _InventoryScreenState extends State<InventoryScreen> {
                                 icon: Icons.cancel_outlined,
                                 color: colorScheme.error,
                               ),
+                            _StatusBadge(
+                              label: _stockStatus(stock, lowStock),
+                              icon: Icons.insights,
+                              color: stock > lowStock * 3
+                                  ? Colors.green
+                                  : colorScheme.primary,
+                            ),
+                            _StatusBadge(
+                              label: stock > lowStock * 3
+                                  ? 'Fast-moving'
+                                  : 'Slow-moving',
+                              icon: Icons.speed,
+                              color: stock > lowStock * 3
+                                  ? Colors.green
+                                  : Colors.blueGrey,
+                            ),
                           ],
                         ),
                       ],
@@ -324,6 +527,14 @@ class _InventoryScreenState extends State<InventoryScreen> {
                     label: 'Stock',
                     value: stock.toString(),
                   ),
+                  const _InfoPill(
+                    label: 'Restocked',
+                    value: 'Not recorded',
+                  ),
+                  const _InfoPill(
+                    label: 'Last Sold',
+                    value: 'Not recorded',
+                  ),
                 ],
               ),
               const Spacer(),
@@ -358,9 +569,28 @@ class _InventoryScreenState extends State<InventoryScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Inventory'),
+        title: Text(_stockTakingMode ? 'Stock Taking' : 'Inventory'),
         backgroundColor: AppTheme.primaryBlue,
         foregroundColor: Colors.white,
+        actions: [
+          IconButton(
+            tooltip: 'Scan Barcode',
+            icon: const Icon(Icons.qr_code_scanner),
+            onPressed: _scanBarcode,
+          ),
+          IconButton(
+            tooltip: _stockTakingMode ? 'Inventory' : 'Stock Taking',
+            icon: Icon(
+              _stockTakingMode ? Icons.inventory_2 : Icons.fact_check,
+            ),
+            onPressed: () {
+              setState(() {
+                _stockTakingMode = !_stockTakingMode;
+                _syncCountControllers();
+              });
+            },
+          ),
+        ],
       ),
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: AppTheme.primaryBlue,
@@ -378,6 +608,8 @@ class _InventoryScreenState extends State<InventoryScreen> {
           ? const Center(
               child: CircularProgressIndicator(),
             )
+          : _stockTakingMode
+              ? _buildStockTakingMode()
           : LayoutBuilder(
               builder: (context, constraints) {
                 final isWide = constraints.maxWidth >= 820;
@@ -505,6 +737,164 @@ class _InventoryScreenState extends State<InventoryScreen> {
           Colors.red,
         ),
       ],
+    );
+  }
+
+  Widget _buildStockTakingMode() {
+    _syncCountControllers();
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final horizontalPadding = constraints.maxWidth >= 820 ? 24.0 : 12.0;
+
+        return CustomScrollView(
+          slivers: [
+            SliverPadding(
+              padding: EdgeInsets.fromLTRB(
+                horizontalPadding,
+                16,
+                horizontalPadding,
+                8,
+              ),
+              sliver: SliverToBoxAdapter(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Easy Stock Taking',
+                      style: Theme.of(context).textTheme.headlineSmall,
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Count multiple products, review differences, then save all adjustments.',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color:
+                                Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _searchController,
+                            onChanged: _search,
+                            decoration: const InputDecoration(
+                              hintText: 'Search products or barcode...',
+                              prefixIcon: Icon(Icons.search),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        FilledButton.icon(
+                          onPressed: _saveBulkStockAdjustments,
+                          icon: const Icon(Icons.save),
+                          label: const Text('Save'),
+                        ),
+                      ],
+                    ),
+                    if (_adjustmentHistory.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      _AdjustmentHistoryCard(records: _adjustmentHistory),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            if (_filteredProducts.isEmpty)
+              const SliverFillRemaining(
+                hasScrollBody: false,
+                child: Center(child: Text('No products found')),
+              )
+            else
+              SliverPadding(
+                padding: EdgeInsets.fromLTRB(
+                  horizontalPadding,
+                  8,
+                  horizontalPadding,
+                  96,
+                ),
+                sliver: SliverList.builder(
+                  itemCount: _filteredProducts.length,
+                  itemBuilder: (context, index) {
+                    final product = _filteredProducts[index];
+                    final id = product['id'] as int;
+
+                    return _StockTakingCard(
+                      product: product,
+                      controller: _countControllers[id]!,
+                      currentStock: _asInt(product['stock_quantity']),
+                      buyingPrice: _asDouble(product['buying_price']),
+                      sellingPrice: _asDouble(product['selling_price']),
+                      onChanged: () => setState(() {}),
+                      onIncrease: () {
+                        final current =
+                            int.tryParse(_countControllers[id]!.text) ??
+                                _asInt(product['stock_quantity']);
+                        _countControllers[id]!.text = (current + 1).toString();
+                        setState(() {});
+                      },
+                      onDecrease: () {
+                        final current =
+                            int.tryParse(_countControllers[id]!.text) ??
+                                _asInt(product['stock_quantity']);
+                        _countControllers[id]!.text =
+                            (current - 1).clamp(0, 999999).toString();
+                        setState(() {});
+                      },
+                    );
+                  },
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _syncCountControllers() {
+    for (final product in _products) {
+      final id = product['id'];
+      if (id is! int) continue;
+      _countControllers.putIfAbsent(
+        id,
+        () => TextEditingController(
+          text: _asInt(product['stock_quantity']).toString(),
+        ),
+      );
+    }
+  }
+
+  Future<void> _saveBulkStockAdjustments() async {
+    var saved = 0;
+
+    for (final product in _products) {
+      final id = product['id'];
+      if (id is! int) continue;
+
+      final controller = _countControllers[id];
+      if (controller == null) continue;
+
+      final previous = _asInt(product['stock_quantity']);
+      final next = int.tryParse(controller.text.trim()) ?? previous;
+      if (previous == next) continue;
+
+      await _saveStockAdjustment(
+        product: product,
+        previousQuantity: previous,
+        newQuantity: next,
+        reason: _StockAdjustmentReason.manualCount,
+        reload: false,
+      );
+      saved++;
+    }
+
+    await _loadProducts();
+
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('$saved stock adjustment${saved == 1 ? '' : 's'} saved')),
     );
   }
 
@@ -720,6 +1110,176 @@ class _InventoryScreenState extends State<InventoryScreen> {
   String _supplierLabel(Map<String, dynamic> product) {
     return _displayValue(product['supplier_name'] ?? product['supplier']);
   }
+
+  String _stockStatus(int stock, int lowStockLimit) {
+    if (stock <= 0) return 'Out';
+    if (stock <= lowStockLimit) return 'Low';
+    return 'Healthy';
+  }
+
+  static String _reasonLabel(_StockAdjustmentReason reason) {
+    switch (reason) {
+      case _StockAdjustmentReason.manualCount:
+        return 'Manual Count';
+      case _StockAdjustmentReason.damaged:
+        return 'Damaged';
+      case _StockAdjustmentReason.expired:
+        return 'Expired';
+      case _StockAdjustmentReason.returned:
+        return 'Returned';
+      case _StockAdjustmentReason.supplierRestock:
+        return 'Supplier Restock';
+      case _StockAdjustmentReason.correction:
+        return 'Correction';
+    }
+  }
+}
+
+class _StockTakingCard extends StatelessWidget {
+  final Map<String, dynamic> product;
+  final TextEditingController controller;
+  final int currentStock;
+  final double buyingPrice;
+  final double sellingPrice;
+  final VoidCallback onChanged;
+  final VoidCallback onIncrease;
+  final VoidCallback onDecrease;
+
+  const _StockTakingCard({
+    required this.product,
+    required this.controller,
+    required this.currentStock,
+    required this.buyingPrice,
+    required this.sellingPrice,
+    required this.onChanged,
+    required this.onIncrease,
+    required this.onDecrease,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final counted = int.tryParse(controller.text.trim()) ?? currentStock;
+    final difference = counted - currentStock;
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    (product['product_name'] ?? 'Unnamed Product').toString(),
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                  ),
+                ),
+                Chip(
+                  label: Text(
+                    difference >= 0 ? '+$difference' : '$difference',
+                  ),
+                  backgroundColor: difference == 0
+                      ? colorScheme.surfaceContainerHighest
+                      : difference > 0
+                          ? Colors.green.withValues(alpha: 0.16)
+                          : colorScheme.errorContainer,
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 12,
+              runSpacing: 8,
+              children: [
+                Text('Barcode: ${(product['barcode'] ?? 'Not set')}'),
+                Text('Current Stock: $currentStock'),
+                Text('Buying: \$${buyingPrice.toStringAsFixed(2)}'),
+                Text('Selling: \$${sellingPrice.toStringAsFixed(2)}'),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                IconButton.filledTonal(
+                  onPressed: onDecrease,
+                  icon: const Icon(Icons.remove),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: TextField(
+                    controller: controller,
+                    keyboardType: TextInputType.number,
+                    onChanged: (_) => onChanged(),
+                    decoration: const InputDecoration(
+                      labelText: 'Counted Stock',
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton.filledTonal(
+                  onPressed: onIncrease,
+                  icon: const Icon(Icons.add),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AdjustmentHistoryCard extends StatelessWidget {
+  final List<_StockAdjustmentRecord> records;
+
+  const _AdjustmentHistoryCard({required this.records});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: ExpansionTile(
+        leading: const Icon(Icons.history),
+        title: Text('Stock Adjustment History (${records.length})'),
+        children: records.take(8).map((record) {
+          return ListTile(
+            dense: true,
+            title: Text(record.productName),
+            subtitle: Text(
+              '${record.reason} • ${record.employee} • ${record.createdAt}',
+            ),
+            trailing: Text(
+              '${record.previousQuantity} → ${record.newQuantity} (${record.difference >= 0 ? '+' : ''}${record.difference})',
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+}
+
+class _StockAdjustmentRecord {
+  final String productName;
+  final int previousQuantity;
+  final int newQuantity;
+  final String reason;
+  final String employee;
+  final DateTime createdAt;
+
+  const _StockAdjustmentRecord({
+    required this.productName,
+    required this.previousQuantity,
+    required this.newQuantity,
+    required this.reason,
+    required this.employee,
+    required this.createdAt,
+  });
+
+  int get difference => newQuantity - previousQuantity;
 }
 
 class _ProductImage extends StatelessWidget {

@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 
 import '../database/local_db.dart';
-import '../widgets/premium_product_card.dart';
-import '../widgets/premium_cart_item.dart';
 import '../widgets/checkout_summary.dart';
+import '../widgets/payment_method_dialog.dart';
+import '../widgets/pos_search_bar.dart';
+import '../widgets/premium_cart_item.dart';
+import '../widgets/premium_product_card.dart';
+import '../widgets/receipt_preview_dialog.dart';
+
 class POSScreen extends StatefulWidget {
   final int shopId;
   final int employeeId;
@@ -23,7 +27,10 @@ class POSScreen extends StatefulWidget {
 }
 
 class _POSScreenState extends State<POSScreen> {
+  final TextEditingController _searchController = TextEditingController();
+
   List<Map<String, dynamic>> products = [];
+  List<Map<String, dynamic>> filteredProducts = [];
   List<Map<String, dynamic>> cartItems = [];
 
   bool isLoading = true;
@@ -34,6 +41,12 @@ class _POSScreenState extends State<POSScreen> {
     loadProducts();
   }
 
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
   Future<void> loadProducts() async {
     final data = await LocalDatabase.instance.getAllProducts(widget.shopId);
 
@@ -41,6 +54,7 @@ class _POSScreenState extends State<POSScreen> {
 
     setState(() {
       products = data;
+      filteredProducts = _filterProducts(data, _searchController.text);
       isLoading = false;
     });
   }
@@ -64,6 +78,36 @@ class _POSScreenState extends State<POSScreen> {
                   (item['buying_price'] as num).toDouble()) *
               (item['quantity'] as int),
     );
+  }
+
+  int get totalCartQuantity {
+    return cartItems.fold<int>(
+      0,
+      (sum, item) => sum + (item['quantity'] as int),
+    );
+  }
+
+  void searchProducts(String value) {
+    setState(() {
+      filteredProducts = _filterProducts(products, value);
+    });
+  }
+
+  List<Map<String, dynamic>> _filterProducts(
+    List<Map<String, dynamic>> source,
+    String query,
+  ) {
+    final normalized = query.trim().toLowerCase();
+
+    if (normalized.isEmpty) {
+      return List<Map<String, dynamic>>.from(source);
+    }
+
+    return source.where((product) {
+      final name = (product['product_name'] ?? '').toString().toLowerCase();
+      final barcode = (product['barcode'] ?? '').toString().toLowerCase();
+      return name.contains(normalized) || barcode.contains(normalized);
+    }).toList();
   }
 
   void addToCart(Map<String, dynamic> product) {
@@ -114,8 +158,42 @@ class _POSScreenState extends State<POSScreen> {
   Future<void> checkout() async {
     if (cartItems.isEmpty) return;
 
+    final paymentMethod = await showDialog<PaymentMethod>(
+      context: context,
+      builder: (_) => PaymentMethodDialog(totalAmount: totalAmount),
+    );
+
+    if (paymentMethod == null) return;
+
     final receiptNumber = await LocalDatabase.instance.generateReceiptNumber();
 
+    if (!mounted) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => ReceiptPreviewDialog(
+        shopName: widget.shopName,
+        cashierName: widget.cashierName,
+        receiptNumber: receiptNumber,
+        cartItems: cartItems,
+        subtotal: totalAmount,
+        tax: 0,
+        discount: 0,
+        total: totalAmount,
+        paymentMethod: paymentMethod.label,
+        onPrint: () => _showComingSoon('Printer support'),
+        onPdf: () => _showComingSoon('PDF receipt export'),
+        onWhatsApp: () => _showComingSoon('WhatsApp receipt sharing'),
+        onConfirm: () => Navigator.pop(context, true),
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    await _completeSale(receiptNumber);
+  }
+
+  Future<void> _completeSale(String receiptNumber) async {
     final saleId = await LocalDatabase.instance.createSale({
       'shop_id': widget.shopId,
       'employee_id': widget.employeeId,
@@ -166,8 +244,43 @@ class _POSScreenState extends State<POSScreen> {
     await loadProducts();
   }
 
+  void _showComingSoon(String feature) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('$feature coming soon')),
+    );
+  }
+
+  void _showMobileCart() {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (context) {
+        return SafeArea(
+          child: SizedBox(
+            height: MediaQuery.sizeOf(context).height * 0.78,
+            child: _CartPanel(
+              cartItems: cartItems,
+              subtotal: totalAmount,
+              profit: totalProfit,
+              totalItems: totalCartQuantity,
+              onCheckout: checkout,
+              onClearCart: clearCart,
+              onIncrease: increaseQuantity,
+              onDecrease: decreaseQuantity,
+              onDelete: removeItem,
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final width = MediaQuery.sizeOf(context).width;
+    final isSplitLayout = width >= 760;
+
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.shopName),
@@ -179,84 +292,221 @@ class _POSScreenState extends State<POSScreen> {
           ),
         ],
       ),
+      floatingActionButton: isSplitLayout || cartItems.isEmpty
+          ? null
+          : FloatingActionButton.extended(
+              onPressed: _showMobileCart,
+              icon: const Icon(Icons.shopping_cart_checkout),
+              label: Text(
+                '$totalCartQuantity • \$${totalAmount.toStringAsFixed(2)}',
+              ),
+            ),
       body: isLoading
           ? const Center(
               child: CircularProgressIndicator(),
             )
-          : Column(
-              children: [
-                Expanded(
-                  flex: 2,
-                  child: GridView.builder(
-                    padding: const EdgeInsets.all(8),
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 2,
-                      childAspectRatio: 1.4,
-                      crossAxisSpacing: 8,
-                      mainAxisSpacing: 8,
-                    ),
-                    itemCount: products.length,
-                    itemBuilder: (context, index) {
-                      final product = products[index];
-
-                     return PremiumProductCard(
-  product: product,
-  onTap: () => addToCart(product),
-);
-                    },
-                  ),
-                ),
-                Container(
-                  height: 320,
-                  padding: const EdgeInsets.all(10),
-                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                  child: Column(
-                    children: [
-                      const Text(
-                        'Cart',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
+          : SafeArea(
+              child: isSplitLayout
+                  ? Row(
+                      children: [
+                        Expanded(
+                          flex: 7,
+                          child: _ProductsPanel(
+                            products: filteredProducts,
+                            searchController: _searchController,
+                            onSearch: searchProducts,
+                            onAddProduct: addToCart,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 10),
-                      Expanded(
-                        child: cartItems.isEmpty
-                            ? const Center(
-                                child: Text('Cart is empty'),
-                              )
-                            : ListView.builder(
-                                itemCount: cartItems.length,
-                                itemBuilder: (context, index) {
-                                  final item = cartItems[index];
+                        VerticalDivider(
+                          width: 1,
+                          color: Theme.of(context).colorScheme.outlineVariant,
+                        ),
+                        SizedBox(
+                          width: width >= 1100 ? 420 : 360,
+                          child: _CartPanel(
+                            cartItems: cartItems,
+                            subtotal: totalAmount,
+                            profit: totalProfit,
+                            totalItems: totalCartQuantity,
+                            onCheckout: checkout,
+                            onClearCart: clearCart,
+                            onIncrease: increaseQuantity,
+                            onDecrease: decreaseQuantity,
+                            onDelete: removeItem,
+                          ),
+                        ),
+                      ],
+                    )
+                  : _ProductsPanel(
+                      products: filteredProducts,
+                      searchController: _searchController,
+                      onSearch: searchProducts,
+                      onAddProduct: addToCart,
+                    ),
+            ),
+    );
+  }
+}
 
-                                  return PremiumCartItem(
-  item: item,
-  onIncrease: () => increaseQuantity(index),
-  onDecrease: () => decreaseQuantity(index),
-  onDelete: () => removeItem(index),
-);
-                                },
-                              ),
-                      ),
-                      const SizedBox(height: 8),
-                     CheckoutSummary(
-  subtotal: totalAmount,
-  discount: 0,
-  tax: 0,
-  profit: totalProfit,
-  totalItems: cartItems.length,
-  onCheckout: () async {
-    checkout();
-  },
-  onClearCart: clearCart,
-),
-                    ],
-                  ),
+class _ProductsPanel extends StatelessWidget {
+  final List<Map<String, dynamic>> products;
+  final TextEditingController searchController;
+  final ValueChanged<String> onSearch;
+  final ValueChanged<Map<String, dynamic>> onAddProduct;
+
+  const _ProductsPanel({
+    required this.products,
+    required this.searchController,
+    required this.onSearch,
+    required this.onAddProduct,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        final crossAxisCount = width >= 1100
+            ? 4
+            : width >= 820
+                ? 3
+                : width >= 520
+                    ? 2
+                    : 1;
+
+        return CustomScrollView(
+          slivers: [
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              sliver: SliverToBoxAdapter(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Point of Sale',
+                      style: Theme.of(context).textTheme.headlineSmall,
+                    ),
+                    const SizedBox(height: 12),
+                    PosSearchBar(
+                      controller: searchController,
+                      onChanged: onSearch,
+                    ),
+                  ],
                 ),
+              ),
+            ),
+            if (products.isEmpty)
+              const SliverFillRemaining(
+                hasScrollBody: false,
+                child: Center(
+                  child: Text('No products found'),
+                ),
+              )
+            else
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                sliver: SliverGrid.builder(
+                  itemCount: products.length,
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: crossAxisCount,
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
+                    mainAxisExtent: 260,
+                  ),
+                  itemBuilder: (context, index) {
+                    final product = products[index];
+
+                    return PremiumProductCard(
+                      product: product,
+                      onTap: () => onAddProduct(product),
+                    );
+                  },
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _CartPanel extends StatelessWidget {
+  final List<Map<String, dynamic>> cartItems;
+  final double subtotal;
+  final double profit;
+  final int totalItems;
+  final VoidCallback onCheckout;
+  final VoidCallback onClearCart;
+  final ValueChanged<int> onIncrease;
+  final ValueChanged<int> onDecrease;
+  final ValueChanged<int> onDelete;
+
+  const _CartPanel({
+    required this.cartItems,
+    required this.subtotal,
+    required this.profit,
+    required this.totalItems,
+    required this.onCheckout,
+    required this.onClearCart,
+    required this.onIncrease,
+    required this.onDecrease,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Row(
+              children: [
+                Text(
+                  'Cart',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                const Spacer(),
+                Text('$totalItems item${totalItems == 1 ? '' : 's'}'),
               ],
             ),
+          ),
+          Expanded(
+            child: cartItems.isEmpty
+                ? const Center(
+                    child: Text('Cart is empty'),
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    itemCount: cartItems.length,
+                    itemBuilder: (context, index) {
+                      final item = cartItems[index];
+
+                      return PremiumCartItem(
+                        item: item,
+                        onIncrease: () => onIncrease(index),
+                        onDecrease: () => onDecrease(index),
+                        onDelete: () => onDelete(index),
+                      );
+                    },
+                  ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: CheckoutSummary(
+              subtotal: subtotal,
+              discount: 0,
+              tax: 0,
+              profit: profit,
+              totalItems: totalItems,
+              onCheckout: onCheckout,
+              onClearCart: onClearCart,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -9,11 +9,13 @@ import '../theme/app_theme.dart';
 class AddProductScreen extends StatefulWidget {
   final int shopId;
   final Map<String, dynamic>? product;
+  final String? initialBarcode;
 
   const AddProductScreen({
     super.key,
     required this.shopId,
     this.product,
+    this.initialBarcode,
   });
 
   @override
@@ -86,6 +88,8 @@ void initState() {
 
     _selectedCategory =
         product['category_id'].toString();
+  } else if (widget.initialBarcode != null) {
+    _barcodeController.text = widget.initialBarcode!;
   }
 }
 

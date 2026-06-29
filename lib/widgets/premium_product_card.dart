@@ -25,7 +25,8 @@ class PremiumProductCard extends StatelessWidget {
         product['image_path']?.toString() ?? '';
 
     return Card(
-      elevation: 4,
+      elevation: 3,
+      shadowColor: Theme.of(context).colorScheme.shadow.withValues(alpha: 0.14),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(18),
       ),
@@ -46,6 +47,10 @@ class PremiumProductCard extends StatelessWidget {
                       ? Image.file(
                           File(imagePath),
                           fit: BoxFit.contain,
+                          errorBuilder: (_, __, ___) => const Icon(
+                            Icons.broken_image_outlined,
+                            size: 58,
+                          ),
                         )
                       : const Icon(
                           Icons.inventory_2_rounded,
@@ -70,7 +75,7 @@ class PremiumProductCard extends StatelessWidget {
               const SizedBox(height: 6),
 
               Text(
-                "\$${product['selling_price']}",
+                "\$${((product['selling_price'] ?? 0) as num).toDouble().toStringAsFixed(2)}",
                 style: const TextStyle(
                   fontSize: 18,
                   color: Colors.green,

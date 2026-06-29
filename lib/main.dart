@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
+import 'screens/auth_gate.dart';
 import 'session/app_session.dart';
-import 'screens/home_screen.dart';
 import 'theme/app_theme.dart';
 
 void main() {
-  runApp(DoubleGeePOS(session: AppSession.offlineOwner()));
+  runApp(DoubleGeePOS(session: AppSession.empty()));
 }
 
 class DoubleGeePOS extends StatelessWidget {
@@ -24,7 +24,7 @@ class DoubleGeePOS extends StatelessWidget {
         title: 'Double Gee Tech',
         theme: AppTheme.lightTheme,
         darkTheme: AppTheme.darkTheme,
-        home: const HomeScreen(),
+        home: const AuthGate(),
       ),
     );
   }

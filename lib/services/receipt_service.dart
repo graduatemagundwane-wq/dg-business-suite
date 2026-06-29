@@ -7,20 +7,67 @@ class ReceiptSettings {
   final String shopName;
   final String address;
   final String phone;
+  final String? logoPath;
   final String footerMessage;
   final String taxNumber;
   final bool showLogo;
   final bool showQrCode;
+  final ReceiptPaperSize paperSize;
+  final ReceiptDocumentType documentType;
 
   const ReceiptSettings({
     required this.shopName,
     this.address = 'Shop address not configured',
     this.phone = 'Phone not configured',
+    this.logoPath,
     this.footerMessage = 'Thank you for shopping with us.',
     this.taxNumber = 'Tax number not configured',
     this.showLogo = true,
     this.showQrCode = true,
+    this.paperSize = ReceiptPaperSize.mm80,
+    this.documentType = ReceiptDocumentType.receipt,
   });
+}
+
+enum ReceiptPaperSize {
+  mm58,
+  mm80,
+  a4Invoice,
+}
+
+extension ReceiptPaperSizeLabel on ReceiptPaperSize {
+  String get label {
+    switch (this) {
+      case ReceiptPaperSize.mm58:
+        return '58mm Receipt';
+      case ReceiptPaperSize.mm80:
+        return '80mm Receipt';
+      case ReceiptPaperSize.a4Invoice:
+        return 'A4 Invoice';
+    }
+  }
+}
+
+enum ReceiptDocumentType {
+  receipt,
+  invoice,
+  quotation,
+  proformaInvoice,
+}
+
+extension ReceiptDocumentTypeLabel on ReceiptDocumentType {
+  String get label {
+    switch (this) {
+      case ReceiptDocumentType.receipt:
+        return 'Receipt';
+      case ReceiptDocumentType.invoice:
+        return 'Invoice';
+      case ReceiptDocumentType.quotation:
+        return 'Quotation';
+      case ReceiptDocumentType.proformaInvoice:
+        return 'Proforma Invoice';
+    }
+  }
 }
 
 class ReceiptItem {
@@ -54,8 +101,10 @@ class ReceiptModel {
   final String shopName;
   final String shopAddress;
   final String phoneNumber;
+  final String? logoPath;
   final String cashierName;
   final String? customerName;
+  final String? customerPhone;
   final String paymentMethod;
   final DateTime dateTime;
   final List<ReceiptItem> items;
@@ -67,14 +116,18 @@ class ReceiptModel {
   final String taxNumber;
   final bool showLogo;
   final bool showQrCode;
+  final ReceiptPaperSize paperSize;
+  final ReceiptDocumentType documentType;
 
   const ReceiptModel({
     required this.receiptNumber,
     required this.shopName,
     required this.shopAddress,
     required this.phoneNumber,
+    this.logoPath,
     required this.cashierName,
     this.customerName,
+    this.customerPhone,
     required this.paymentMethod,
     required this.dateTime,
     required this.items,
@@ -86,6 +139,8 @@ class ReceiptModel {
     required this.taxNumber,
     this.showLogo = true,
     this.showQrCode = true,
+    this.paperSize = ReceiptPaperSize.mm80,
+    this.documentType = ReceiptDocumentType.receipt,
   });
 
   factory ReceiptModel.fromCart({
@@ -100,6 +155,7 @@ class ReceiptModel {
     required double total,
     ReceiptSettings? settings,
     String? customerName,
+    String? customerPhone,
   }) {
     final receiptSettings = settings ?? ReceiptSettings(shopName: shopName);
 
@@ -108,8 +164,10 @@ class ReceiptModel {
       shopName: receiptSettings.shopName,
       shopAddress: receiptSettings.address,
       phoneNumber: receiptSettings.phone,
+      logoPath: receiptSettings.logoPath,
       cashierName: cashierName,
       customerName: customerName,
+      customerPhone: customerPhone,
       paymentMethod: paymentMethod,
       dateTime: DateTime.now(),
       items: cartItems.map(ReceiptItem.fromMap).toList(),
@@ -121,6 +179,8 @@ class ReceiptModel {
       taxNumber: receiptSettings.taxNumber,
       showLogo: receiptSettings.showLogo,
       showQrCode: receiptSettings.showQrCode,
+      paperSize: receiptSettings.paperSize,
+      documentType: receiptSettings.documentType,
     );
   }
 }
@@ -130,6 +190,7 @@ class ReceiptHistoryEntry {
   final String receiptNumber;
   final String cashierName;
   final String customerName;
+  final String? customerPhone;
   final DateTime dateTime;
   final double total;
   final double profit;
@@ -139,6 +200,7 @@ class ReceiptHistoryEntry {
     required this.receiptNumber,
     required this.cashierName,
     required this.customerName,
+    this.customerPhone,
     required this.dateTime,
     required this.total,
     required this.profit,
@@ -193,7 +255,8 @@ class ReceiptService {
         s.total_profit,
         s.sale_date,
         COALESCE(e.employee_name, 'Unknown Cashier') AS cashier_name,
-        COALESCE(c.customer_name, 'Walk-in Customer') AS customer_name
+        COALESCE(c.customer_name, 'Walk-in Customer') AS customer_name,
+        c.phone AS customer_phone
       FROM sales s
       LEFT JOIN employees e ON e.id = s.employee_id
       LEFT JOIN customers c ON c.id = s.customer_id
@@ -210,6 +273,7 @@ class ReceiptService {
         receiptNumber: (row['receipt_number'] ?? '').toString(),
         cashierName: (row['cashier_name'] ?? 'Unknown Cashier').toString(),
         customerName: (row['customer_name'] ?? 'Walk-in Customer').toString(),
+        customerPhone: row['customer_phone']?.toString(),
         dateTime: DateTime.tryParse((row['sale_date'] ?? '').toString()) ??
             DateTime.fromMillisecondsSinceEpoch(0),
         total: _asDouble(row['total_amount']),
@@ -228,7 +292,8 @@ class ReceiptService {
       SELECT
         s.*,
         COALESCE(e.employee_name, 'Unknown Cashier') AS cashier_name,
-        c.customer_name
+        c.customer_name,
+        c.phone AS customer_phone
       FROM sales s
       LEFT JOIN employees e ON e.id = s.employee_id
       LEFT JOIN customers c ON c.id = s.customer_id
@@ -255,6 +320,7 @@ class ReceiptService {
       phoneNumber: 'Phone not configured',
       cashierName: (sale['cashier_name'] ?? 'Unknown Cashier').toString(),
       customerName: sale['customer_name']?.toString(),
+      customerPhone: sale['customer_phone']?.toString(),
       paymentMethod: 'Not recorded',
       dateTime: DateTime.tryParse((sale['sale_date'] ?? '').toString()) ??
           DateTime.now(),

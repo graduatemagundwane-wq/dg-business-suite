@@ -8,6 +8,23 @@ enum PaymentMethod {
   bank,
 }
 
+extension PaymentMethodLabel on PaymentMethod {
+  String get label {
+    switch (this) {
+      case PaymentMethod.cash:
+        return 'Cash';
+      case PaymentMethod.ecocash:
+        return 'EcoCash';
+      case PaymentMethod.onemoney:
+        return 'OneMoney';
+      case PaymentMethod.card:
+        return 'Card';
+      case PaymentMethod.bank:
+        return 'Bank Transfer';
+    }
+  }
+}
+
 class PaymentMethodDialog extends StatefulWidget {
   final double totalAmount;
 
@@ -46,10 +63,10 @@ class _PaymentMethodDialogState
             : const Icon(Icons.circle_outlined),
         selected: selected,
         onTap: () {
-        setState(() {
+          setState(() {
             _selected = method;
-        });
-      },
+          });
+        },
       ),
     );
   }

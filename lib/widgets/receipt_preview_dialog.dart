@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../services/pdf_service.dart';
+import '../services/printer_service.dart';
 import '../services/receipt_service.dart';
+import '../services/whatsapp_service.dart';
 
 class ReceiptPreviewDialog extends StatelessWidget {
   final String shopName;
@@ -76,17 +79,17 @@ class ReceiptPreviewDialog extends StatelessWidget {
                 alignment: WrapAlignment.center,
                 children: [
                   OutlinedButton.icon(
-                    onPressed: onPrint,
+                    onPressed: () => _printReceipt(context, receipt),
                     icon: const Icon(Icons.print),
                     label: const Text('Print'),
                   ),
                   OutlinedButton.icon(
-                    onPressed: onPdf,
+                    onPressed: () => _exportPdf(context, receipt),
                     icon: const Icon(Icons.picture_as_pdf),
-                    label: const Text('PDF Soon'),
+                    label: const Text('PDF'),
                   ),
                   OutlinedButton.icon(
-                    onPressed: onWhatsApp,
+                    onPressed: () => _shareWhatsApp(context, receipt),
                     icon: const Icon(Icons.chat),
                     label: const Text('WhatsApp'),
                   ),
@@ -102,6 +105,24 @@ class ReceiptPreviewDialog extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _printReceipt(BuildContext context, ReceiptModel receipt) async {
+    await PrinterService.instance.printReceipt(receipt);
+    onPrint();
+  }
+
+  Future<void> _exportPdf(BuildContext context, ReceiptModel receipt) async {
+    await PdfService.instance.shareReceiptPdf(receipt);
+    onPdf();
+  }
+
+  Future<void> _shareWhatsApp(BuildContext context, ReceiptModel receipt) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final result = await WhatsAppService.instance.shareReceipt(receipt: receipt);
+
+    messenger.showSnackBar(SnackBar(content: Text(result.message)));
+    onWhatsApp();
   }
 }
 

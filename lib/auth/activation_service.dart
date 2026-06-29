@@ -1,6 +1,42 @@
 import 'dart:math';
 
+import 'package:http/http.dart' as http;
+
+import '../database/local_db.dart';
+
+enum ActivationStatus {
+  activated,
+  pending,
+  suspended,
+  expired,
+  offlineGrace,
+}
+
+extension ActivationStatusLabel on ActivationStatus {
+  String get label {
+    switch (this) {
+      case ActivationStatus.activated:
+        return 'Activated';
+      case ActivationStatus.pending:
+        return 'Pending';
+      case ActivationStatus.suspended:
+        return 'Suspended';
+      case ActivationStatus.expired:
+        return 'Expired';
+      case ActivationStatus.offlineGrace:
+        return 'Offline Grace';
+    }
+  }
+
+  bool get allowsBusinessAccess {
+    return this == ActivationStatus.activated ||
+        this == ActivationStatus.offlineGrace;
+  }
+}
+
 class ActivationService {
+  static const String baseUrl = 'https://doublegeetech.co.zw';
+
   static final ActivationService instance =
       ActivationService._internal();
 
@@ -43,5 +79,115 @@ class ActivationService {
     }
 
     return "DG-EMP-$code";
+  }
+
+  Future<ActivationStatus> checkRemoteActivation({
+    required String shopCode,
+    required bool locallyActivated,
+  }) async {
+    try {
+      final uri = Uri.parse('$baseUrl/api/activation/status/$shopCode');
+      final response = await http.get(uri).timeout(const Duration(seconds: 5));
+
+      if (response.statusCode == 200) {
+        final body = response.body.toLowerCase();
+
+        if (body.contains('suspended')) {
+          await _cacheActivation(shopCode: shopCode, activated: false);
+          return ActivationStatus.suspended;
+        }
+
+        if (body.contains('expired')) {
+          await _cacheActivation(shopCode: shopCode, activated: false);
+          return ActivationStatus.expired;
+        }
+
+        if (body.contains('activated') || body.contains('active')) {
+          await _cacheActivation(shopCode: shopCode, activated: true);
+          return ActivationStatus.activated;
+        }
+
+        await _cacheActivation(shopCode: shopCode, activated: false);
+        return ActivationStatus.pending;
+      }
+
+      return locallyActivated
+          ? ActivationStatus.offlineGrace
+          : ActivationStatus.pending;
+    } catch (_) {
+      return locallyActivated
+          ? ActivationStatus.offlineGrace
+          : ActivationStatus.pending;
+    }
+  }
+
+  Future<ActivationStatus> verifyActivationCode({
+    required String shopCode,
+    required String activationCode,
+  }) async {
+    try {
+      final uri = Uri.parse('$baseUrl/api/activation/verify');
+      final response = await http
+          .post(
+            uri,
+            body: {
+              'shop_code': shopCode,
+              'activation_code': activationCode,
+            },
+          )
+          .timeout(const Duration(seconds: 5));
+
+      if (response.statusCode == 200) {
+        final body = response.body.toLowerCase();
+
+        if (body.contains('activated') || body.contains('active')) {
+          await _cacheActivation(shopCode: shopCode, activated: true);
+          return ActivationStatus.activated;
+        }
+
+        if (body.contains('suspended')) return ActivationStatus.suspended;
+        if (body.contains('expired')) return ActivationStatus.expired;
+      }
+    } catch (_) {
+      final local = await _verifyLocalActivationCode(
+        shopCode: shopCode,
+        activationCode: activationCode,
+      );
+
+      if (local) return ActivationStatus.offlineGrace;
+    }
+
+    return ActivationStatus.pending;
+  }
+
+  Future<void> _cacheActivation({
+    required String shopCode,
+    required bool activated,
+  }) async {
+    final db = await LocalDatabase.instance.database;
+    await db.update(
+      'shops',
+      {'activated': activated ? 1 : 0},
+      where: 'shop_code = ?',
+      whereArgs: [shopCode],
+    );
+  }
+
+  Future<bool> _verifyLocalActivationCode({
+    required String shopCode,
+    required String activationCode,
+  }) async {
+    final db = await LocalDatabase.instance.database;
+    final result = await db.query(
+      'shops',
+      where: 'shop_code = ? AND activation_code = ?',
+      whereArgs: [shopCode, activationCode],
+      limit: 1,
+    );
+
+    if (result.isEmpty) return false;
+
+    await _cacheActivation(shopCode: shopCode, activated: true);
+    return true;
   }
 }

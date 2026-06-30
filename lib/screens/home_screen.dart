@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../session/app_session.dart';
@@ -9,6 +8,7 @@ import '../widgets/premium_navigation_drawer.dart';
 import '../widgets/premium_state_widgets.dart';
 import '../widgets/responsive_layout.dart';
 import '../widgets/search_box.dart';
+import 'ai_insights_screen.dart';
 import 'dashboard_screen.dart';
 import 'customer_orders_screen.dart';
 import 'customer_spending_screen.dart';
@@ -262,6 +262,12 @@ class _HomeScreenState extends State<HomeScreen> {
         builder: _buildReports,
         ownerOnly: true,
       ),
+      PremiumNavigationItem(
+        label: 'AI Insights',
+        icon: Icons.psychology_alt,
+        builder: (_) => AiInsightsScreen(shopId: session.requiredShopId),
+        ownerOnly: true,
+      ),
       const PremiumNavigationItem(
         label: 'Low Stock',
         icon: Icons.warning_amber,
@@ -374,7 +380,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return const _CustomerPlaceholderScreen(
       title: 'Complaints / Reports',
       icon: Icons.report_gmailerrorred_outlined,
-      message: 'Customer complaints and service reports are prepared.',
+      message: 'Submit service reports from your customer account.',
     );
   }
 
@@ -592,25 +598,11 @@ class _SwitchModeScreen extends StatelessWidget {
                     : 'Return to Employee Mode',
               ),
             ),
-          if (session.accountIsCustomer && kDebugMode) ...[
-            OutlinedButton.icon(
-              onPressed: () {
-                session.switchToDemoOwnerMode();
-                Navigator.pop(context);
-              },
-              icon: const Icon(Icons.admin_panel_settings),
-              label: const Text('Demo Owner Mode'),
+          if (session.accountIsCustomer)
+            const Text(
+              'Business access requires a registered business or employee account.',
+              textAlign: TextAlign.center,
             ),
-            const SizedBox(height: AppSpacing.sm),
-            OutlinedButton.icon(
-              onPressed: () {
-                session.switchToDemoEmployeeMode();
-                Navigator.pop(context);
-              },
-              icon: const Icon(Icons.badge),
-              label: const Text('Demo Employee Mode'),
-            ),
-          ],
         ],
       ),
     );

@@ -105,7 +105,10 @@ class _ProfitHeader extends StatelessWidget {
     final margin = report.sales == 0 ? 0 : report.netProfit / report.sales * 100;
 
     return DashboardCard(
-      child: Row(
+      child: Wrap(
+        spacing: AppSpacing.md,
+        runSpacing: AppSpacing.md,
+        crossAxisAlignment: WrapCrossAlignment.center,
         children: [
           CircleAvatar(
             radius: 28,
@@ -113,24 +116,28 @@ class _ProfitHeader extends StatelessWidget {
             foregroundColor: theme.colorScheme.onSecondaryContainer,
             child: const Icon(Icons.account_balance_wallet_outlined),
           ),
-          const SizedBox(width: AppSpacing.md),
-          Expanded(
+          ConstrainedBox(
+            constraints: const BoxConstraints(minWidth: 160, maxWidth: 420),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text('Net Profit', style: theme.textTheme.titleLarge),
                 const SizedBox(height: AppSpacing.xs),
-                Text(
-                  _money(report.netProfit),
-                  style: theme.textTheme.headlineSmall?.copyWith(
-                    color: theme.colorScheme.secondary,
-                    fontWeight: FontWeight.w900,
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    _money(report.netProfit),
+                    style: theme.textTheme.headlineSmall?.copyWith(
+                      color: theme.colorScheme.secondary,
+                      fontWeight: FontWeight.w900,
+                    ),
                   ),
                 ),
               ],
             ),
           ),
-          Text('${margin.toStringAsFixed(1)}% margin'),
+          Chip(label: Text('${margin.toStringAsFixed(1)}% margin')),
         ],
       ),
     );
@@ -144,35 +151,81 @@ class _ProfitCards extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isTablet = ResponsiveLayout.isTablet(context);
-
-    return GridView.count(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      crossAxisCount: isTablet ? 3 : 1,
-      crossAxisSpacing: AppSpacing.md,
-      mainAxisSpacing: AppSpacing.md,
-      childAspectRatio: isTablet ? 1.3 : 2.8,
+    return Column(
       children: [
-        MetricCard(
+        _ProfitMetricTile(
           label: 'Sales',
           value: _money(report.sales),
           icon: Icons.trending_up,
           accentColor: Colors.blue,
         ),
-        MetricCard(
+        const SizedBox(height: AppSpacing.md),
+        _ProfitMetricTile(
           label: 'Gross Profit',
           value: _money(report.profit),
           icon: Icons.savings,
           accentColor: Colors.green,
         ),
-        MetricCard(
+        const SizedBox(height: AppSpacing.md),
+        _ProfitMetricTile(
           label: 'Expenses',
           value: _money(report.expenses),
           icon: Icons.money_off,
           accentColor: Colors.orange,
         ),
       ],
+    );
+  }
+}
+
+class _ProfitMetricTile extends StatelessWidget {
+  final String label;
+  final String value;
+  final IconData icon;
+  final Color accentColor;
+
+  const _ProfitMetricTile({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.accentColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return DashboardCard(
+      child: Row(
+        children: [
+          CircleAvatar(
+            backgroundColor: accentColor.withValues(alpha: 0.12),
+            foregroundColor: accentColor,
+            child: Icon(icon),
+          ),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.titleMedium,
+            ),
+          ),
+          Flexible(
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerRight,
+              child: Text(
+                value,
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

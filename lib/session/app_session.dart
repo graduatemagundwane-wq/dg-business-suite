@@ -183,29 +183,6 @@ class AppSession extends ChangeNotifier {
     notifyListeners();
   }
 
-  void switchToDemoOwnerMode() {
-    signInOwner(
-      shopId: 1,
-      ownerName: 'Demo Owner',
-      shopName: 'Double Gee Demo Shop',
-      activated: true,
-      activationStatus: ActivationStatus.activated,
-      shopCode: 'DG-DEMO-OWNER',
-    );
-  }
-
-  void switchToDemoEmployeeMode() {
-    signInEmployee(
-      shopId: 1,
-      employeeId: 1,
-      employeeName: 'Demo Employee',
-      shopName: 'Double Gee Demo Shop',
-      activated: true,
-      activationStatus: ActivationStatus.activated,
-      shopCode: 'DG-DEMO-EMPLOYEE',
-    );
-  }
-
   void updateActivation({
     required ActivationStatus status,
   }) {

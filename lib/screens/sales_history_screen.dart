@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/dashboard_service.dart';
+import '../session/app_session.dart';
 import '../widgets/loading_widget.dart';
 import '../widgets/premium_app_bar.dart';
 import '../widgets/premium_state_widgets.dart';
@@ -77,6 +78,9 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
               final sale = sales[index];
               final amount = _asDouble(sale['total_amount']);
               final profit = _asDouble(sale['total_profit']);
+              final sessionName = SessionScope.of(context).displayName;
+              final cashier = (sale['employee_name'] ?? '').toString().trim();
+              final cashierName = cashier.isEmpty ? sessionName : cashier;
 
               return Card(
                 margin: const EdgeInsets.only(bottom: 10),
@@ -88,7 +92,7 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
                     (sale['receipt_number'] ?? 'Unknown Receipt').toString(),
                   ),
                   subtitle: Text(
-                    'Cashier: ${(sale['employee_name'] ?? 'Unknown').toString()}\n${(sale['sale_date'] ?? '').toString()}',
+                    'Cashier: ${cashierName.isEmpty ? 'Owner' : cashierName}\n${(sale['sale_date'] ?? '').toString()}',
                   ),
                   isThreeLine: true,
                   trailing: Column(

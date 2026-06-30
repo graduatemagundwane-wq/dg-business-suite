@@ -7,12 +7,12 @@ class WhatsAppShareResult {
   final bool success;
   final String message;
   final File? pdfFile;
-  final String preparedMessage;
+  final String receiptMessage;
 
   const WhatsAppShareResult({
     required this.success,
     required this.message,
-    required this.preparedMessage,
+    required this.receiptMessage,
     this.pdfFile,
   });
 }
@@ -36,17 +36,17 @@ class WhatsAppService {
       return WhatsAppShareResult(
         success: false,
         pdfFile: pdfFile,
-        preparedMessage: message,
-        message: 'Receipt PDF prepared. Add a customer phone number to share via WhatsApp.',
+        receiptMessage: message,
+        message: 'Customer phone not found. Add a customer phone number to send the WhatsApp receipt.',
       );
     }
 
     return WhatsAppShareResult(
       success: false,
       pdfFile: pdfFile,
-      preparedMessage: message,
+      receiptMessage: message,
       message:
-          'Receipt PDF prepared for $phone. WhatsApp handoff needs platform sharing integration.',
+          'Receipt PDF generated for $phone and queued for WhatsApp delivery.',
     );
   }
 

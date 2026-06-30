@@ -317,11 +317,14 @@ class DashboardService {
   }
 
   Future<List<Map<String, dynamic>>> getRecentSales(int shopId) async {
+    await LocalDatabase.instance.ensureSalesCashierColumns();
     final db = await LocalDatabase.instance.database;
 
     return db.rawQuery(
       '''
-      SELECT s.*, e.employee_name
+      SELECT
+        s.*,
+        COALESCE(s.cashier_name, e.employee_name) AS employee_name
       FROM sales s
       LEFT JOIN employees e ON e.id = s.employee_id
       WHERE s.shop_id = ?

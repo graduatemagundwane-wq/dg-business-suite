@@ -56,7 +56,7 @@ class BackupService {
       status: result.status,
       completedAt: result.completedAt,
       filePath: result.filePath,
-      message: 'Automatic cloud backup package prepared locally',
+      message: 'Automatic cloud backup package is ready for server upload',
     );
   }
 

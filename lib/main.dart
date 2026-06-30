@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'screens/auth_gate.dart';
+import 'screens/update_gate.dart';
 import 'session/app_session.dart';
 import 'theme/app_theme.dart';
 
@@ -25,7 +25,7 @@ class DoubleGeePOS extends StatelessWidget {
         title: 'Double Gee Tech',
         theme: AppTheme.lightTheme,
         darkTheme: AppTheme.darkTheme,
-        home: const AuthGate(),
+        home: const UpdateGate(),
       ),
     );
   }

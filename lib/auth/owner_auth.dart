@@ -13,7 +13,16 @@ class OwnerAuth {
     required String shopName,
     required String ownerName,
     required String whatsapp,
+    String email = '',
+    String country = '',
+    String currency = '',
+    String businessType = '',
+    String logoPath = '',
+    String businessAddress = '',
+    String gpsLocation = '',
+    String taxNumber = '',
   }) async {
+    await LocalDatabase.instance.ensureProductionIdentityColumns();
     final shopCode =
         ActivationService.instance.generateShopCode();
 
@@ -29,6 +38,17 @@ class OwnerAuth {
             'shop_name': shopName,
             'owner_name': ownerName,
             'whatsapp': whatsapp,
+            'email': email,
+            'country': country,
+            'currency': currency,
+            'business_type': businessType,
+            'logo_path': logoPath,
+            'business_address': businessAddress,
+            'gps_location': gpsLocation,
+            'tax_number': taxNumber,
+            'business_uid': _id('BIZ'),
+            'activation_uid': _id('ACTIVATION'),
+            'device_uid': _id('DEVICE'),
             'activation_code': activationCode,
             'activated': 0,
             'created_at':
@@ -43,6 +63,10 @@ class OwnerAuth {
       'shop_code': shopCode,
       'activation_code': activationCode,
     };
+  }
+
+  String _id(String prefix) {
+    return 'DG-$prefix-${DateTime.now().microsecondsSinceEpoch}';
   }
 
   Future<bool> activateShop({

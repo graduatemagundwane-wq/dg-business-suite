@@ -10,7 +10,12 @@ class CustomerAuth {
   Future<Map<String, dynamic>> findOrCreateCustomer({
     required String customerName,
     required String phoneNumber,
+    String email = '',
+    String location = '',
+    String favouriteArea = '',
+    bool notificationsEnabled = false,
   }) async {
+    await LocalDatabase.instance.ensureProductionIdentityColumns();
     final db = await LocalDatabase.instance.database;
     final existing = await db.query(
       'customers',
@@ -28,6 +33,11 @@ class CustomerAuth {
       {
         'customer_name': customerName.trim(),
         'phone_number': phoneNumber.trim(),
+        'email': email.trim(),
+        'location': location.trim(),
+        'favourite_area': favouriteArea.trim(),
+        'notifications_enabled': notificationsEnabled ? 1 : 0,
+        'customer_uid': 'DG-CUSTOMER-${DateTime.now().microsecondsSinceEpoch}',
         'total_spent': 0,
         'purchase_count': 0,
         'created_at': DateTime.now().toIso8601String(),
@@ -44,4 +54,3 @@ class CustomerAuth {
     return created.first;
   }
 }
-

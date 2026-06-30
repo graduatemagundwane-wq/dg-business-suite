@@ -15,75 +15,10 @@ class _SupplierScreenState extends State<SupplierScreen> {
   ];
 
   Future<void> _addSupplier() async {
-    final nameController = TextEditingController();
-    final categoryController = TextEditingController();
-    final phoneController = TextEditingController();
-
     final supplier = await showDialog<_Supplier>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Add Supplier'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nameController,
-                decoration: const InputDecoration(
-                  labelText: 'Supplier Name',
-                  prefixIcon: Icon(Icons.business),
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: categoryController,
-                decoration: const InputDecoration(
-                  labelText: 'Category',
-                  prefixIcon: Icon(Icons.category),
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: phoneController,
-                keyboardType: TextInputType.phone,
-                decoration: const InputDecoration(
-                  labelText: 'Phone',
-                  prefixIcon: Icon(Icons.phone),
-                ),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              final name = nameController.text.trim();
-              if (name.isEmpty) return;
-
-              Navigator.pop(
-                context,
-                _Supplier(
-                  name: name,
-                  category: categoryController.text.trim().isEmpty
-                      ? 'General'
-                      : categoryController.text.trim(),
-                  phone: phoneController.text.trim(),
-                ),
-              );
-            },
-            child: const Text('Save'),
-          ),
-        ],
-      ),
+      builder: (_) => const _SupplierDialog(),
     );
-
-    nameController.dispose();
-    categoryController.dispose();
-    phoneController.dispose();
 
     if (supplier == null) return;
 
@@ -121,6 +56,92 @@ class _SupplierScreenState extends State<SupplierScreen> {
           );
         },
       ),
+    );
+  }
+}
+
+class _SupplierDialog extends StatefulWidget {
+  const _SupplierDialog();
+
+  @override
+  State<_SupplierDialog> createState() => _SupplierDialogState();
+}
+
+class _SupplierDialogState extends State<_SupplierDialog> {
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _categoryController = TextEditingController();
+  final TextEditingController _phoneController = TextEditingController();
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _categoryController.dispose();
+    _phoneController.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    final name = _nameController.text.trim();
+    if (name.isEmpty) return;
+
+    Navigator.pop(
+      context,
+      _Supplier(
+        name: name,
+        category: _categoryController.text.trim().isEmpty
+            ? 'General'
+            : _categoryController.text.trim(),
+        phone: _phoneController.text.trim(),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Add Supplier'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _nameController,
+              decoration: const InputDecoration(
+                labelText: 'Supplier Name',
+                prefixIcon: Icon(Icons.business),
+              ),
+              onSubmitted: (_) => _save(),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _categoryController,
+              decoration: const InputDecoration(
+                labelText: 'Category',
+                prefixIcon: Icon(Icons.category),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _phoneController,
+              keyboardType: TextInputType.phone,
+              decoration: const InputDecoration(
+                labelText: 'Phone',
+                prefixIcon: Icon(Icons.phone),
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: _save,
+          child: const Text('Save'),
+        ),
+      ],
     );
   }
 }

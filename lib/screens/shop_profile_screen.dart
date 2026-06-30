@@ -326,7 +326,7 @@ class _RatingPreparationCard extends StatelessWidget {
                   ),
             ),
             const SizedBox(height: 8),
-            const Text('Shop ratings, product ratings and complaints are prepared.'),
+            const Text('Shop ratings, product ratings and complaints are available for customer feedback.'),
             const SizedBox(height: 12),
             Wrap(
               spacing: 8,

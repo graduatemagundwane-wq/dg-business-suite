@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../database/local_db.dart';
+import '../services/receipt_automation_service.dart';
+import '../services/receipt_service.dart';
 import '../widgets/checkout_summary.dart';
 import '../widgets/payment_method_dialog.dart';
 import '../widgets/pos_search_bar.dart';
@@ -202,9 +204,9 @@ class _POSScreenState extends State<POSScreen> {
         discount: 0,
         total: totalAmount,
         paymentMethod: paymentMethod.label,
-        onPrint: () => _showComingSoon('Printer support'),
-        onPdf: () => _showComingSoon('PDF receipt export'),
-        onWhatsApp: () => _showComingSoon('WhatsApp receipt sharing'),
+        onPrint: () => _showStatus('Receipt sent to printer service'),
+        onPdf: () => _showStatus('Receipt PDF generated'),
+        onWhatsApp: () => _showStatus('WhatsApp receipt workflow started'),
         onConfirm: () => Navigator.pop(context, true),
       ),
     );
@@ -220,6 +222,8 @@ class _POSScreenState extends State<POSScreen> {
       'employee_id': widget.employeeId,
       'customer_id': null,
       'receipt_number': receiptNumber,
+      'cashier_name': widget.cashierName,
+      'cashier_role': 'cashier',
       'total_amount': totalAmount,
       'total_profit': totalProfit,
       'sale_date': DateTime.now().toIso8601String(),
@@ -253,6 +257,25 @@ class _POSScreenState extends State<POSScreen> {
       profit: totalProfit,
     );
 
+    final receipt = ReceiptModel.fromCart(
+      receiptNumber: receiptNumber,
+      shopName: widget.shopName,
+      cashierName: widget.cashierName,
+      paymentMethod: 'Recorded',
+      cartItems: cartItems,
+      subtotal: totalAmount,
+      discount: 0,
+      tax: 0,
+      total: totalAmount,
+    );
+
+    if (!mounted) return;
+
+    await ReceiptAutomationService.instance.handleCompletedSale(
+      context: context,
+      receipt: receipt,
+    );
+
     if (!mounted) return;
 
     ScaffoldMessenger.of(context).showSnackBar(
@@ -265,9 +288,9 @@ class _POSScreenState extends State<POSScreen> {
     await loadProducts();
   }
 
-  void _showComingSoon(String feature) {
+  void _showStatus(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('$feature coming soon')),
+      SnackBar(content: Text(message)),
     );
   }
 

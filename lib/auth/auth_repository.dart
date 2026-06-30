@@ -20,10 +20,46 @@ class AuthRepository {
   Future<Map<String, dynamic>> loginCustomer({
     required String customerName,
     required String phoneNumber,
+    String email = '',
+    String location = '',
+    String favouriteArea = '',
+    bool notificationsEnabled = false,
   }) {
     return CustomerAuth.instance.findOrCreateCustomer(
       customerName: customerName,
       phoneNumber: phoneNumber,
+      email: email,
+      location: location,
+      favouriteArea: favouriteArea,
+      notificationsEnabled: notificationsEnabled,
+    );
+  }
+
+  Future<Map<String, dynamic>> registerBusiness({
+    required String businessName,
+    required String ownerName,
+    required String phone,
+    required String email,
+    required String country,
+    required String currency,
+    required String businessType,
+    required String logoPath,
+    required String businessAddress,
+    required String gpsLocation,
+    required String taxNumber,
+  }) {
+    return OwnerAuth.instance.registerShop(
+      shopName: businessName,
+      ownerName: ownerName,
+      whatsapp: phone,
+      email: email,
+      country: country,
+      currency: currency,
+      businessType: businessType,
+      logoPath: logoPath,
+      businessAddress: businessAddress,
+      gpsLocation: gpsLocation,
+      taxNumber: taxNumber,
     );
   }
 

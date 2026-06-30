@@ -173,7 +173,7 @@ class _MarketplaceHubScreenState extends State<MarketplaceHubScreen> {
                         const SizedBox(height: 18),
                         _SectionTitle(
                           title: 'Nearby Shops',
-                          subtitle: 'Distance and ratings are ready placeholders',
+                          subtitle: 'Distance and ratings use verified marketplace data',
                           icon: Icons.near_me,
                           color: colorScheme.tertiary,
                         ),

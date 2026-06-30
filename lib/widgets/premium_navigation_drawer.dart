@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 
 import '../session/app_session.dart';
 import '../theme/app_tokens.dart';
@@ -148,24 +147,6 @@ class PremiumNavigationDrawer extends StatelessWidget {
                     Navigator.pop(context);
                   },
                 ),
-              if (session.accountIsCustomer && kDebugMode) ...[
-                ListTile(
-                  leading: const Icon(Icons.admin_panel_settings),
-                  title: const Text('Demo Owner Mode'),
-                  onTap: () {
-                    session.switchToDemoOwnerMode();
-                    Navigator.pop(context);
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.badge),
-                  title: const Text('Demo Employee Mode'),
-                  onTap: () {
-                    session.switchToDemoEmployeeMode();
-                    Navigator.pop(context);
-                  },
-                ),
-              ],
             ],
           ),
         );

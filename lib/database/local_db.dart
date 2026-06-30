@@ -48,6 +48,17 @@ class LocalDatabase {
         shop_name TEXT,
         owner_name TEXT,
         whatsapp TEXT,
+        email TEXT,
+        country TEXT,
+        currency TEXT,
+        business_type TEXT,
+        logo_path TEXT,
+        business_address TEXT,
+        gps_location TEXT,
+        tax_number TEXT,
+        business_uid TEXT,
+        activation_uid TEXT,
+        device_uid TEXT,
         activation_code TEXT,
         activated INTEGER,
         created_at TEXT
@@ -103,6 +114,8 @@ class LocalDatabase {
         employee_id INTEGER,
         customer_id INTEGER,
         receipt_number TEXT,
+        cashier_name TEXT,
+        cashier_role TEXT,
         total_amount REAL,
         total_profit REAL,
         sale_date TEXT
@@ -130,6 +143,11 @@ class LocalDatabase {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         customer_name TEXT,
         phone_number TEXT,
+        email TEXT,
+        location TEXT,
+        favourite_area TEXT,
+        notifications_enabled INTEGER DEFAULT 0,
+        customer_uid TEXT,
         total_spent REAL DEFAULT 0,
         purchase_count INTEGER DEFAULT 0,
         created_at TEXT
@@ -442,11 +460,84 @@ Future<int> createSale(
   Map<String, dynamic> sale,
 ) async {
   final db = await database;
+  await ensureSalesCashierColumns();
 
   return await db.insert(
     'sales',
     sale,
   );
+}
+
+Future<void> ensureSalesCashierColumns() async {
+  final db = await database;
+  final columns = await db.rawQuery('PRAGMA table_info(sales)');
+  final names = columns.map((column) => column['name']?.toString()).toSet();
+
+  if (!names.contains('cashier_name')) {
+    await db.execute('ALTER TABLE sales ADD COLUMN cashier_name TEXT');
+  }
+
+  if (!names.contains('cashier_role')) {
+    await db.execute('ALTER TABLE sales ADD COLUMN cashier_role TEXT');
+  }
+}
+
+Future<void> ensureProductionIdentityColumns() async {
+  final db = await database;
+  await _ensureColumns(
+    db,
+    'shops',
+    const {
+      'email': 'TEXT',
+      'country': 'TEXT',
+      'currency': 'TEXT',
+      'business_type': 'TEXT',
+      'logo_path': 'TEXT',
+      'business_address': 'TEXT',
+      'gps_location': 'TEXT',
+      'tax_number': 'TEXT',
+      'business_uid': 'TEXT',
+      'activation_uid': 'TEXT',
+      'device_uid': 'TEXT',
+    },
+  );
+  await _ensureColumns(
+    db,
+    'customers',
+    const {
+      'email': 'TEXT',
+      'location': 'TEXT',
+      'favourite_area': 'TEXT',
+      'notifications_enabled': 'INTEGER DEFAULT 0',
+      'customer_uid': 'TEXT',
+    },
+  );
+  await _ensureColumns(
+    db,
+    'employees',
+    const {
+      'employee_uid': 'TEXT',
+      'device_uid': 'TEXT',
+    },
+  );
+}
+
+Future<void> _ensureColumns(
+  Database db,
+  String table,
+  Map<String, String> columns,
+) async {
+  final existingColumns = await db.rawQuery('PRAGMA table_info($table)');
+  final names =
+      existingColumns.map((column) => column['name']?.toString()).toSet();
+
+  for (final entry in columns.entries) {
+    if (!names.contains(entry.key)) {
+      await db.execute(
+        'ALTER TABLE $table ADD COLUMN ${entry.key} ${entry.value}',
+      );
+    }
+  }
 }
 
 Future<int> createSaleItem(

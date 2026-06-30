@@ -101,7 +101,7 @@ class SyncService {
         state: SyncState.success,
         lastSyncAt: syncedAt,
         pendingChanges: entity.pendingChanges,
-        message: 'Local data prepared for cloud upload',
+        message: 'Local data queued for cloud upload',
       );
     }
 

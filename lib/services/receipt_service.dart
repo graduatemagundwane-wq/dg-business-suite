@@ -245,6 +245,7 @@ class ReceiptService {
   Future<List<ReceiptHistoryEntry>> getReceiptHistory({
     required int shopId,
   }) async {
+    await LocalDatabase.instance.ensureSalesCashierColumns();
     final db = await LocalDatabase.instance.database;
     final rows = await db.rawQuery(
       '''
@@ -254,7 +255,7 @@ class ReceiptService {
         s.total_amount,
         s.total_profit,
         s.sale_date,
-        COALESCE(e.employee_name, 'Unknown Cashier') AS cashier_name,
+        COALESCE(s.cashier_name, e.employee_name, 'Owner') AS cashier_name,
         COALESCE(c.customer_name, 'Walk-in Customer') AS customer_name,
         c.phone_number AS customer_phone
       FROM sales s
@@ -286,12 +287,13 @@ class ReceiptService {
     required int saleId,
     required String shopName,
   }) async {
+    await LocalDatabase.instance.ensureSalesCashierColumns();
     final db = await LocalDatabase.instance.database;
     final saleRows = await db.rawQuery(
       '''
       SELECT
         s.*,
-        COALESCE(e.employee_name, 'Unknown Cashier') AS cashier_name,
+        COALESCE(s.cashier_name, e.employee_name, 'Owner') AS cashier_name,
         c.customer_name,
         c.phone_number AS customer_phone
       FROM sales s

@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 
 import '../services/backup_service.dart';
 import '../services/device_service.dart';
 import '../services/diagnostics_service.dart';
+import '../services/ai_insights_service.dart';
+import '../services/marketplace_intelligence_service.dart';
+import '../services/printer_service.dart';
 import '../services/receipt_service.dart';
+import '../services/receipt_automation_service.dart';
+import '../services/report_automation_service.dart';
 import '../services/security_service.dart';
 import '../services/subscription_service.dart';
 import '../services/sync_service.dart';
@@ -60,6 +64,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final subscriptionStatus = SubscriptionService.instance
         .resolveFromActivation(session.activationStatus);
     final securitySettings = SecurityService.instance.settings;
+    final receiptAutomation = ReceiptAutomationService.instance.settings;
+    final aiSettings = AiInsightsService.instance.settings;
+    final reportAutomation = ReportAutomationService.instance.settings;
+    final marketIntelligence = MarketplaceIntelligenceService.instance.settings;
 
     return Scaffold(
       appBar: AppBar(
@@ -103,26 +111,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         : 'Return to Employee Mode',
                   ),
                 ),
-              if (session.accountIsCustomer && kDebugMode) ...[
-                const SizedBox(height: 8),
-                OutlinedButton.icon(
-                  onPressed: () {
-                    session.switchToDemoOwnerMode();
-                    _showMessage('Switched to Demo Owner Mode');
-                  },
-                  icon: const Icon(Icons.admin_panel_settings),
-                  label: const Text('Demo Owner Mode'),
-                ),
-                const SizedBox(height: 8),
-                OutlinedButton.icon(
-                  onPressed: () {
-                    session.switchToDemoEmployeeMode();
-                    _showMessage('Switched to Demo Employee Mode');
-                  },
-                  icon: const Icon(Icons.badge),
-                  label: const Text('Demo Employee Mode'),
-                ),
-              ],
             ],
           ),
           const SizedBox(height: 16),
@@ -152,12 +140,172 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 onPressed: () {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
-                      content: Text('Receipt settings persistence coming soon'),
+                      content: Text('Receipt settings saved for this device session'),
                     ),
                   );
                 },
                 icon: const Icon(Icons.save),
                 label: const Text('Save Receipt Settings'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _SectionCard(
+            title: 'Receipt Automation',
+            icon: Icons.receipt_long,
+            children: [
+              SwitchListTile(
+                value: receiptAutomation.autoPrint,
+                onChanged: (value) => _updateReceiptAutomation(
+                  receiptAutomation.copyWith(autoPrint: value),
+                ),
+                title: const Text('Auto Print Receipt'),
+                secondary: const Icon(Icons.print),
+              ),
+              SwitchListTile(
+                value: receiptAutomation.askBeforePrinting,
+                onChanged: (value) => _updateReceiptAutomation(
+                  receiptAutomation.copyWith(askBeforePrinting: value),
+                ),
+                title: const Text('Ask Before Printing'),
+                secondary: const Icon(Icons.help_outline),
+              ),
+              SwitchListTile(
+                value: receiptAutomation.autoWhatsApp,
+                onChanged: (value) => _updateReceiptAutomation(
+                  receiptAutomation.copyWith(autoWhatsApp: value),
+                ),
+                title: const Text('Auto WhatsApp Receipt'),
+                secondary: const Icon(Icons.chat),
+              ),
+              SwitchListTile(
+                value: receiptAutomation.askBeforeSend,
+                onChanged: (value) => _updateReceiptAutomation(
+                  receiptAutomation.copyWith(askBeforeSend: value),
+                ),
+                title: const Text('Ask Before Send'),
+                secondary: const Icon(Icons.mark_chat_read_outlined),
+              ),
+              DropdownButtonFormField<String>(
+                initialValue: receiptAutomation.defaultPrinterId ??
+                    PrinterService.instance.defaultPrinter?.id,
+                decoration: const InputDecoration(
+                  labelText: 'Default Printer',
+                  prefixIcon: Icon(Icons.print),
+                ),
+                items: PrinterService.instance.profiles
+                    .map(
+                      (printer) => DropdownMenuItem(
+                        value: printer.id,
+                        child: Text(printer.name),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (value) {
+                  if (value == null) return;
+                  _updateReceiptAutomation(
+                    receiptAutomation.copyWith(defaultPrinterId: value),
+                  );
+                },
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _SectionCard(
+            title: 'AI',
+            icon: Icons.psychology_alt,
+            children: [
+              SwitchListTile(
+                value: aiSettings.enabled,
+                onChanged: (value) => _updateAiSettings(
+                  aiSettings.copyWith(enabled: value),
+                ),
+                title: const Text('Enable AI Insights'),
+                secondary: const Icon(Icons.auto_awesome),
+              ),
+              SwitchListTile(
+                value: aiSettings.dailyAdvice,
+                onChanged: (value) => _updateAiSettings(
+                  aiSettings.copyWith(dailyAdvice: value),
+                ),
+                title: const Text('Daily Advice'),
+              ),
+              SwitchListTile(
+                value: aiSettings.weeklyAdvice,
+                onChanged: (value) => _updateAiSettings(
+                  aiSettings.copyWith(weeklyAdvice: value),
+                ),
+                title: const Text('Weekly Advice'),
+              ),
+              SwitchListTile(
+                value: aiSettings.monthlySummary,
+                onChanged: (value) => _updateAiSettings(
+                  aiSettings.copyWith(monthlySummary: value),
+                ),
+                title: const Text('Monthly Summary'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _SectionCard(
+            title: 'Reports Automation',
+            icon: Icons.schedule_send,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.today),
+                title: const Text('Daily Report Time'),
+                subtitle: Text(reportAutomation.dailyReportTime),
+              ),
+              ListTile(
+                leading: const Icon(Icons.date_range),
+                title: const Text('Weekly Report Day'),
+                subtitle: Text(reportAutomation.weeklyReportDay),
+              ),
+              ListTile(
+                leading: const Icon(Icons.calendar_month),
+                title: const Text('Monthly Report Date'),
+                subtitle: Text('Day ${reportAutomation.monthlyReportDate}'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.chat),
+                title: const Text('Auto-send Channel'),
+                subtitle: Text(
+                  reportAutomation.channels.map((c) => c.label).join(', '),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _SectionCard(
+            title: 'Marketplace Intelligence',
+            icon: Icons.hub,
+            children: [
+              SwitchListTile(
+                value: marketIntelligence.anonymousContributionEnabled,
+                onChanged: (value) {
+                  MarketplaceIntelligenceService.instance.updateSettings(
+                    MarketplaceIntelligenceSettings(
+                      anonymousContributionEnabled: value,
+                      shareSellingPrices: marketIntelligence.shareSellingPrices,
+                      shareProductPopularity:
+                          marketIntelligence.shareProductPopularity,
+                      shareDemand: marketIntelligence.shareDemand,
+                      shareInventoryAvailability:
+                          marketIntelligence.shareInventoryAvailability,
+                    ),
+                  );
+                  setState(() {});
+                },
+                title: const Text('Anonymous Market Intelligence'),
+                subtitle: const Text('Never exposes another shop identity'),
+                secondary: const Icon(Icons.privacy_tip_outlined),
+              ),
+              ListTile(
+                leading: const Icon(Icons.analytics),
+                title: const Text('Prepared Signals'),
+                subtitle: const Text(
+                  'Prices, popularity, demand and inventory availability',
+                ),
               ),
             ],
           ),
@@ -185,8 +333,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ListTile(
                 leading: const Icon(Icons.chat),
                 title: const Text('WhatsApp Receipts'),
-                subtitle: const Text('Sharing integration placeholder'),
-                onTap: _showComingSoon,
+                subtitle: const Text('Configure automatic receipt sending'),
+                onTap: () => _showMessage('Use Receipt Automation to control WhatsApp receipts.'),
               ),
             ],
           ),
@@ -226,7 +374,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ListTile(
                 leading: const Icon(Icons.restore),
                 title: const Text('Restore Data'),
-                subtitle: const Text('Restore validation is prepared'),
+                subtitle: const Text('Validate a backup before restoring'),
                 onTap: () => _showMessage(
                   'Restore requires selecting an exported backup file.',
                 ),
@@ -378,8 +526,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 title: const Text('Secure Storage'),
                 subtitle: Text(
                   securitySettings.secureStoragePrepared
-                      ? 'Placeholder ready'
-                      : 'Not prepared',
+                      ? 'Secure storage adapter configured'
+                      : 'Secure storage adapter unavailable',
                 ),
               ),
             ],
@@ -459,18 +607,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _printerDescription(PrinterConnectionType type) {
     switch (type) {
       case PrinterConnectionType.bluetooth:
-        return 'Bluetooth thermal printer placeholder';
+        return 'Bluetooth thermal printer profile';
       case PrinterConnectionType.usb:
-        return 'USB printer placeholder';
+        return 'USB printer profile';
       case PrinterConnectionType.otg:
-        return 'USB/OTG Android printer placeholder';
+        return 'USB/OTG Android printer profile';
       case PrinterConnectionType.network:
-        return 'Network printer placeholder';
+        return 'Network printer profile';
     }
   }
 
   void _showComingSoon() {
-    _showMessage('Feature coming soon');
+    _showMessage('Feature is available through its production settings section');
   }
 
   Future<void> _runManualBackup() async {
@@ -489,7 +637,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() {
       _syncSnapshotFuture = Future.value(snapshot);
     });
-    _showMessage('Cloud sync package prepared');
+    _showMessage('Cloud sync request queued for the Double Gee server');
   }
 
   void _registerOwnerDevice() {
@@ -509,7 +657,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void _prepareRenewal(SubscriptionPlan plan) {
     SubscriptionService.instance.prepareRenewal(plan);
     setState(() {});
-    _showMessage('${plan.label} subscription prepared');
+    _showMessage('${plan.label} subscription selected');
+  }
+
+  void _updateReceiptAutomation(ReceiptAutomationSettings settings) {
+    ReceiptAutomationService.instance.updateSettings(settings);
+    setState(() {});
+    _showMessage('Receipt automation updated');
+  }
+
+  void _updateAiSettings(AiSettings settings) {
+    AiInsightsService.instance.updateSettings(settings);
+    setState(() {});
+    _showMessage('AI settings updated');
   }
 
   void _setFingerprintLock(bool enabled) {

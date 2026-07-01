@@ -14,6 +14,7 @@ class AppRadius {
   static const double md = 8;
   static const double lg = 8;
   static const double xl = 12;
+  static const double xxl = 24;
 }
 
 class AppElevation {
@@ -30,6 +31,7 @@ class AppBreakpoints {
 class AppDurations {
   static const Duration fast = Duration(milliseconds: 160);
   static const Duration normal = Duration(milliseconds: 240);
+  static const Duration slow = Duration(milliseconds: 420);
 }
 
 class AppInsets {

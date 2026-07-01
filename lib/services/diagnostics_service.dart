@@ -2,6 +2,7 @@ import 'dart:io';
 
 import '../auth/activation_service.dart';
 import '../database/local_db.dart';
+import 'api_config.dart';
 import 'backup_service.dart';
 import 'sync_service.dart';
 
@@ -71,7 +72,8 @@ class DiagnosticsService {
   Future<DiagnosticItem> _databaseHealth() async {
     try {
       final db = await LocalDatabase.instance.database;
-      final result = await db.rawQuery('SELECT COUNT(*) AS total FROM products');
+      final result =
+          await db.rawQuery('SELECT COUNT(*) AS total FROM products');
       final count = result.first['total'] ?? 0;
 
       return DiagnosticItem(
@@ -104,7 +106,7 @@ class DiagnosticsService {
 
   Future<DiagnosticItem> _internetHealth() async {
     try {
-      final result = await InternetAddress.lookup('doublegeetech.co.zw')
+      final result = await InternetAddress.lookup(ApiConfig.hostName)
           .timeout(const Duration(seconds: 3));
       final online = result.isNotEmpty && result.first.rawAddress.isNotEmpty;
 
@@ -125,7 +127,9 @@ class DiagnosticsService {
   DiagnosticItem _activationHealth(ActivationStatus status) {
     return DiagnosticItem(
       label: 'Activation Status',
-      state: status.allowsBusinessAccess ? HealthState.healthy : HealthState.warning,
+      state: status.allowsBusinessAccess
+          ? HealthState.healthy
+          : HealthState.warning,
       message: status.label,
     );
   }

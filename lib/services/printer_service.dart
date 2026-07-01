@@ -70,7 +70,7 @@ class PrinterService {
       name: 'Network Office Printer',
       type: PrinterConnectionType.network,
       paperSize: ReceiptPaperSize.a4Invoice,
-      address: '192.168.1.100',
+      address: 'Network printer address pending',
     ),
   ];
 

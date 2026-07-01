@@ -1,8 +1,8 @@
 import 'dart:math';
 
-import 'package:http/http.dart' as http;
-
 import '../database/local_db.dart';
+import '../services/api_config.dart';
+import '../services/double_gee_api_service.dart';
 
 enum ActivationStatus {
   activated,
@@ -35,10 +35,7 @@ extension ActivationStatusLabel on ActivationStatus {
 }
 
 class ActivationService {
-  static const String baseUrl = 'https://doublegeetech.co.zw';
-
-  static final ActivationService instance =
-      ActivationService._internal();
+  static final ActivationService instance = ActivationService._internal();
 
   factory ActivationService() => instance;
 
@@ -47,35 +44,30 @@ class ActivationService {
   final Random _random = Random();
 
   String generateShopCode() {
-    final number =
-        (_random.nextInt(9000) + 1000);
+    final number = (_random.nextInt(9000) + 1000);
 
     return "DG-SHOP-$number";
   }
 
   String generateActivationCode() {
-    const chars =
-        'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
     String code = '';
 
     for (int i = 0; i < 8; i++) {
-      code += chars[
-          _random.nextInt(chars.length)];
+      code += chars[_random.nextInt(chars.length)];
     }
 
     return "ACT-$code";
   }
 
   String generateEmployeeCode() {
-    const chars =
-        'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
     String code = '';
 
     for (int i = 0; i < 5; i++) {
-      code += chars[
-          _random.nextInt(chars.length)];
+      code += chars[_random.nextInt(chars.length)];
     }
 
     return "DG-EMP-$code";
@@ -86,35 +78,30 @@ class ActivationService {
     required bool locallyActivated,
   }) async {
     try {
-      final uri = Uri.parse('$baseUrl/api/activation/status/$shopCode');
-      final response = await http.get(uri).timeout(const Duration(seconds: 5));
+      final response = await DoubleGeeApiService.instance.get(
+        ApiConfig.activationStatus(shopCode),
+      );
+      final body = response.data.toString().toLowerCase();
 
-      if (response.statusCode == 200) {
-        final body = response.body.toLowerCase();
-
-        if (body.contains('suspended')) {
-          await _cacheActivation(shopCode: shopCode, activated: false);
-          return ActivationStatus.suspended;
-        }
-
-        if (body.contains('expired')) {
-          await _cacheActivation(shopCode: shopCode, activated: false);
-          return ActivationStatus.expired;
-        }
-
-        if (body.contains('activated') || body.contains('active')) {
-          await _cacheActivation(shopCode: shopCode, activated: true);
-          return ActivationStatus.activated;
-        }
-
+      if (body.contains('suspended')) {
         await _cacheActivation(shopCode: shopCode, activated: false);
-        return ActivationStatus.pending;
+        return ActivationStatus.suspended;
       }
 
-      return locallyActivated
-          ? ActivationStatus.offlineGrace
-          : ActivationStatus.pending;
-    } catch (_) {
+      if (body.contains('expired')) {
+        await _cacheActivation(shopCode: shopCode, activated: false);
+        return ActivationStatus.expired;
+      }
+
+      if (body.contains('activated') || body.contains('active')) {
+        await _cacheActivation(shopCode: shopCode, activated: true);
+        return ActivationStatus.activated;
+      }
+
+      await _cacheActivation(shopCode: shopCode, activated: false);
+      return ActivationStatus.pending;
+    } on ApiException catch (error) {
+      if (!error.canUseOfflineMode) return ActivationStatus.pending;
       return locallyActivated
           ? ActivationStatus.offlineGrace
           : ActivationStatus.pending;
@@ -126,29 +113,24 @@ class ActivationService {
     required String activationCode,
   }) async {
     try {
-      final uri = Uri.parse('$baseUrl/api/activation/verify');
-      final response = await http
-          .post(
-            uri,
-            body: {
-              'shop_code': shopCode,
-              'activation_code': activationCode,
-            },
-          )
-          .timeout(const Duration(seconds: 5));
+      final response = await DoubleGeeApiService.instance.post(
+        ApiConfig.activationVerify,
+        {
+          'shop_code': shopCode,
+          'activation_code': activationCode,
+        },
+      );
+      final body = response.data.toString().toLowerCase();
 
-      if (response.statusCode == 200) {
-        final body = response.body.toLowerCase();
-
-        if (body.contains('activated') || body.contains('active')) {
-          await _cacheActivation(shopCode: shopCode, activated: true);
-          return ActivationStatus.activated;
-        }
-
-        if (body.contains('suspended')) return ActivationStatus.suspended;
-        if (body.contains('expired')) return ActivationStatus.expired;
+      if (body.contains('activated') || body.contains('active')) {
+        await _cacheActivation(shopCode: shopCode, activated: true);
+        return ActivationStatus.activated;
       }
-    } catch (_) {
+
+      if (body.contains('suspended')) return ActivationStatus.suspended;
+      if (body.contains('expired')) return ActivationStatus.expired;
+    } on ApiException catch (error) {
+      if (!error.canUseOfflineMode) return ActivationStatus.pending;
       final local = await _verifyLocalActivationCode(
         shopCode: shopCode,
         activationCode: activationCode,

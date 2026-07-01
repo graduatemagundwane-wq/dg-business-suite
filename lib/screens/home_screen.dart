@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../auth/auth_repository.dart';
+import '../services/license_service.dart';
 import '../session/app_session.dart';
 import '../theme/app_tokens.dart';
 import '../widgets/dashboard_card.dart';
@@ -42,6 +44,13 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _query = '';
+  late Future<LicenseStatus> _licenseFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _licenseFuture = LicenseService.instance.checkLicense();
+  }
 
   @override
   void dispose() {
@@ -79,6 +88,17 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (session.isBusinessAccount) ...[
+              FutureBuilder<LicenseStatus>(
+                future: _licenseFuture,
+                builder: (context, snapshot) {
+                  final license = snapshot.data;
+                  if (license == null) return const SizedBox.shrink();
+                  return _LicenseBanner(status: license);
+                },
+              ),
+              const SizedBox(height: AppSpacing.md),
+            ],
             _HomeHeader(
               title: _modeTitle(session.role ?? AppRole.owner),
               subtitle: _modeSubtitle(session),
@@ -543,12 +563,62 @@ class _CustomerSettingsScreen extends StatelessWidget {
           ),
           const SizedBox(height: AppSpacing.md),
           FilledButton.icon(
-            onPressed: () {
+            onPressed: () async {
+              await const AuthRepository().logout();
+              if (!context.mounted) return;
               session.signOut();
               Navigator.popUntil(context, (route) => route.isFirst);
             },
             icon: const Icon(Icons.logout),
             label: const Text('Log out'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LicenseBanner extends StatelessWidget {
+  final LicenseStatus status;
+
+  const _LicenseBanner({
+    required this.status,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final active = status.isActive;
+
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: active
+            ? theme.colorScheme.secondary.withValues(alpha: 0.08)
+            : theme.colorScheme.tertiary.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(AppRadius.xl),
+        border: Border.all(
+          color: active
+              ? theme.colorScheme.secondary.withValues(alpha: 0.26)
+              : theme.colorScheme.tertiary.withValues(alpha: 0.3),
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            active ? Icons.verified : Icons.info_outline,
+            color: active
+                ? theme.colorScheme.secondary
+                : theme.colorScheme.tertiary,
+          ),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: Text(
+              status.message,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
           ),
         ],
       ),

@@ -1,6 +1,5 @@
-import 'dart:convert';
-
-import 'package:http/http.dart' as http;
+import 'api_config.dart';
+import 'double_gee_api_service.dart';
 
 enum UpdateRequirement {
   current,
@@ -32,8 +31,6 @@ class AppUpdateStatus {
 
 class UpdateService {
   static const String currentVersion = '1.0.0';
-  static const String updateEndpoint =
-      'https://doublegeetech.co.zw/api/apps/double-gee-business-suite/version';
 
   static final UpdateService instance = UpdateService._internal();
 
@@ -43,19 +40,9 @@ class UpdateService {
 
   Future<AppUpdateStatus> checkForUpdates() async {
     try {
-      final response = await http
-          .get(Uri.parse(updateEndpoint))
-          .timeout(const Duration(seconds: 5));
-
-      if (response.statusCode != 200) {
-        return const AppUpdateStatus(
-          currentVersion: currentVersion,
-          requirement: UpdateRequirement.unavailable,
-          message: 'Could not verify app version with the server.',
-        );
-      }
-
-      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final response =
+          await DoubleGeeApiService.instance.get(ApiConfig.version);
+      final data = response.data;
       final latest = (data['latest_version'] ?? currentVersion).toString();
       final critical = data['critical'] == true || data['force_update'] == true;
       final newer = _isNewer(latest, currentVersion);
@@ -72,18 +59,22 @@ class UpdateService {
         whatsNew: (data['whats_new'] ?? '').toString(),
         downloadUrl: data['download_url']?.toString(),
       );
-    } catch (_) {
-      return const AppUpdateStatus(
+    } on ApiException catch (error) {
+      return AppUpdateStatus(
         currentVersion: currentVersion,
         requirement: UpdateRequirement.unavailable,
-        message: 'Version check unavailable. Offline mode is active.',
+        message: error.canUseOfflineMode
+            ? 'Version check unavailable. Offline mode is active.'
+            : error.friendlyMessage,
       );
     }
   }
 
   bool _isNewer(String latest, String current) {
-    final latestParts = latest.split('.').map((v) => int.tryParse(v) ?? 0).toList();
-    final currentParts = current.split('.').map((v) => int.tryParse(v) ?? 0).toList();
+    final latestParts =
+        latest.split('.').map((v) => int.tryParse(v) ?? 0).toList();
+    final currentParts =
+        current.split('.').map((v) => int.tryParse(v) ?? 0).toList();
     final length = latestParts.length > currentParts.length
         ? latestParts.length
         : currentParts.length;

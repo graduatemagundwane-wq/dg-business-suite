@@ -14,6 +14,10 @@ import '../services/subscription_service.dart';
 import '../services/sync_service.dart';
 import '../services/update_service.dart';
 import '../session/app_session.dart';
+import '../theme/app_theme.dart';
+import '../theme/app_tokens.dart';
+import '../widgets/premium_app_bar.dart';
+import '../widgets/yola_branding.dart';
 import 'receipt_history_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -70,12 +74,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final marketIntelligence = MarketplaceIntelligenceService.instance.settings;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Settings'),
+      appBar: const PremiumAppBar(
+        title: 'System Settings',
+        subtitle: 'Manage preferences, security, sync and updates.',
       ),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(AppSpacing.lg),
         children: [
+          YolaGradientPanel(
+            padding: const EdgeInsets.all(AppSpacing.lg),
+            child: Row(
+              children: [
+                const YolaLogoLockup(
+                  compact: true,
+                  captionColor: Colors.white,
+                ),
+                const SizedBox(width: AppSpacing.lg),
+                Expanded(
+                  child: Text(
+                    'Premium business controls by Double Gee Tech',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w800,
+                        ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
           _SectionCard(
             title: 'Switch Mode',
             icon: Icons.swap_horiz,
@@ -115,6 +142,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const SizedBox(height: 16),
           _SectionCard(
+            title: 'Language & Region',
+            icon: Icons.language,
+            children: const [
+              ListTile(
+                leading: Icon(Icons.translate),
+                title: Text('App Language'),
+                subtitle: Text('Language selector prepared for rollout'),
+                trailing: LanguageSelectorPlaceholder(),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _SectionCard(
             title: 'Receipt Settings',
             icon: Icons.receipt_long,
             children: [
@@ -140,7 +180,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 onPressed: () {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
-                      content: Text('Receipt settings saved for this device session'),
+                      content: Text(
+                          'Receipt settings saved for this device session'),
                     ),
                   );
                 },
@@ -334,7 +375,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 leading: const Icon(Icons.chat),
                 title: const Text('WhatsApp Receipts'),
                 subtitle: const Text('Configure automatic receipt sending'),
-                onTap: () => _showMessage('Use Receipt Automation to control WhatsApp receipts.'),
+                onTap: () => _showMessage(
+                    'Use Receipt Automation to control WhatsApp receipts.'),
               ),
             ],
           ),
@@ -507,7 +549,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 value: securitySettings.fingerprintLockEnabled,
                 onChanged: _setFingerprintLock,
                 title: const Text('Fingerprint Lock'),
-                subtitle: const Text('Prepared until biometric package is added'),
+                subtitle:
+                    const Text('Prepared until biometric package is added'),
                 secondary: const Icon(Icons.fingerprint),
               ),
               ListTile(
@@ -542,13 +585,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 builder: (context, snapshot) {
                   final update = snapshot.data;
 
-                  return ListTile(
-                    leading: const Icon(Icons.update),
-                    title: Text(update?.requirement.label ?? 'Checking'),
-                    subtitle: Text(
-                      update?.message ?? 'Checking app update status...',
-                    ),
-                  );
+                  return AppVersionUpdateRoom(update: update);
                 },
               ),
             ],
@@ -618,7 +655,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   void _showComingSoon() {
-    _showMessage('Feature is available through its production settings section');
+    _showMessage(
+        'Feature is available through its production settings section');
   }
 
   Future<void> _runManualBackup() async {
@@ -788,23 +826,45 @@ class _SectionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Card(
+      elevation: 0,
+      color: theme.colorScheme.surface,
+      shadowColor: AppTheme.primaryBlue.withValues(alpha: 0.12),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.xxl),
+        side: BorderSide(color: theme.colorScheme.outlineVariant),
+      ),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(AppSpacing.lg),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                CircleAvatar(child: Icon(icon)),
-                const SizedBox(width: 12),
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        theme.colorScheme.primary.withValues(alpha: 0.14),
+                        theme.colorScheme.secondary.withValues(alpha: 0.12),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(AppRadius.xl),
+                  ),
+                  child: Icon(icon, color: theme.colorScheme.primary),
+                ),
+                const SizedBox(width: AppSpacing.md),
                 Text(
                   title,
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
               ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: AppSpacing.lg),
             ...children,
           ],
         ),

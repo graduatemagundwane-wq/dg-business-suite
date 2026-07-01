@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../services/api_health_service.dart';
 import '../services/update_service.dart';
 import '../theme/app_tokens.dart';
 import '../widgets/dashboard_card.dart';
@@ -13,21 +14,21 @@ class UpdateGate extends StatefulWidget {
 }
 
 class _UpdateGateState extends State<UpdateGate> {
-  late Future<AppUpdateStatus> _updateFuture;
+  late Future<_StartupStatus> _startupFuture;
   bool _skipped = false;
 
   @override
   void initState() {
     super.initState();
-    _updateFuture = UpdateService.instance.checkForUpdates();
+    _startupFuture = _loadStartupStatus();
   }
 
   @override
   Widget build(BuildContext context) {
     if (_skipped) return const AuthGate();
 
-    return FutureBuilder<AppUpdateStatus>(
-      future: _updateFuture,
+    return FutureBuilder<_StartupStatus>(
+      future: _startupFuture,
       builder: (context, snapshot) {
         if (!snapshot.hasData) {
           return const Scaffold(
@@ -35,16 +36,88 @@ class _UpdateGateState extends State<UpdateGate> {
           );
         }
 
-        final status = snapshot.data!;
-        if (!status.canUpdate || status.requirement == UpdateRequirement.unavailable) {
-          return const AuthGate();
+        final startup = snapshot.data!;
+        final status = startup.updateStatus;
+        if (!status.canUpdate ||
+            status.requirement == UpdateRequirement.unavailable) {
+          return _StartupStatusBanner(
+            healthStatus: startup.healthStatus,
+            child: const AuthGate(),
+          );
         }
 
         return _UpdateScreen(
           status: status,
-          onLater: status.mustUpdate ? null : () => setState(() => _skipped = true),
+          onLater:
+              status.mustUpdate ? null : () => setState(() => _skipped = true),
         );
       },
+    );
+  }
+
+  Future<_StartupStatus> _loadStartupStatus() async {
+    final health = await ApiHealthService.instance.checkHealth();
+    final update = await UpdateService.instance.checkForUpdates();
+    return _StartupStatus(
+      healthStatus: health,
+      updateStatus: update,
+    );
+  }
+}
+
+class _StartupStatus {
+  final ServerHealthStatus healthStatus;
+  final AppUpdateStatus updateStatus;
+
+  const _StartupStatus({
+    required this.healthStatus,
+    required this.updateStatus,
+  });
+}
+
+class _StartupStatusBanner extends StatefulWidget {
+  final ServerHealthStatus healthStatus;
+  final Widget child;
+
+  const _StartupStatusBanner({
+    required this.healthStatus,
+    required this.child,
+  });
+
+  @override
+  State<_StartupStatusBanner> createState() => _StartupStatusBannerState();
+}
+
+class _StartupStatusBannerState extends State<_StartupStatusBanner> {
+  bool _visible = true;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_visible) return widget.child;
+
+    final connected = widget.healthStatus.isConnected;
+
+    return Scaffold(
+      body: Column(
+        children: [
+          MaterialBanner(
+            leading: Icon(
+              connected ? Icons.cloud_done : Icons.cloud_off,
+              color: connected
+                  ? Theme.of(context).colorScheme.secondary
+                  : Theme.of(context).colorScheme.tertiary,
+            ),
+            content: Text(widget.healthStatus.message),
+            actions: [
+              TextButton(
+                onPressed: () => setState(() => _visible = false),
+                child: const Text('Dismiss'),
+              ),
+            ],
+          ),
+          Expanded(child: widget.child),
+        ],
+      ),
     );
   }
 }
@@ -104,7 +177,8 @@ class _UpdateScreen extends StatelessWidget {
                       onPressed: () {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
-                            content: Text('Opening the secure Double Gee update channel.'),
+                            content: Text(
+                                'Opening the secure Double Gee update channel.'),
                           ),
                         );
                       },

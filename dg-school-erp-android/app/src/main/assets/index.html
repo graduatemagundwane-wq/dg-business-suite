@@ -84,6 +84,7 @@
    <button class="navbtn" data-page="support" onclick="go('support',this)">Student Support</button>
    <button class="navbtn" data-page="communications" onclick="go('communications',this)">Communications</button>
    <button class="navbtn" data-page="reports" onclick="go('reports',this)">Reports</button>
+   <button class="navbtn" data-page="setup" onclick="go('setup',this)">School Setup</button>
    <button class="navbtn" data-page="team" onclick="go('team',this)">Users & Access</button>
   </nav>
   <main id="content"></main>
@@ -189,6 +190,7 @@ async function render(page){
  if(page==='register')return renderRegister();
  if(page==='finance')return renderFinance();
  if(page==='reports')return renderReports();
+ if(page==='setup')return renderSetup();
  if(page==='team')return renderTeam();
  if(page==='attention')return renderGeneric('Needs Attention','needs_attention');
  if(page==='admissions')return renderAdmissions();
@@ -238,7 +240,7 @@ async function submitRegister(){
  const learners=cache.students.filter(s=>!s.class_id||s.class_id===cid);if(!learners.length)return alert('No learners in this class');
  for(const s of learners)if(!cache.marks[s.id])return alert('Mark every learner before submitting.');
  try{
-  let r=await insert('attendance_registers',{school_id:ctx.school_id,class_id:cid,subject_id:el('regSubject').value||null,register_date:el('regDate').value,period:el('regPeriod').value||'',submitted_by:session.user?.id||session.user?.sub,status:'submitted'});
+  let r=await insert('attendance_registers',{school_id:ctx.school_id,class_id:cid,subject_id:el('regSubject').value||null,register_date:el('regDate').value,period:el('regPeriod').value||'',submitted_by:session.user?.id||session.user?.sub,submitted_by_name:session.user?.user_metadata?.full_name||session.user?.email||'Staff',status:'submitted'});
   let regId=r[0].id;
   for(const s of learners)await insert('attendance_entries',{school_id:ctx.school_id,register_id:regId,student_id:s.id,status:cache.marks[s.id]});
   alert('Register submitted successfully.');renderRegister();
@@ -246,7 +248,7 @@ async function submitRegister(){
   const q=JSON.parse(localStorage.getItem('offline_registers')||'[]');q.push({class_id:cid,subject_id:el('regSubject').value||null,date:el('regDate').value,period:el('regPeriod').value,marks:cache.marks,queued_at:new Date().toISOString()});localStorage.setItem('offline_registers',JSON.stringify(q));alert('Internet unavailable. Register saved on this device and will remain visible as pending sync.');
  }
 }
-async function loadSubmittedRegisters(){try{let rs=await table('attendance_registers','school_id=eq.'+ctx.school_id+'&select=id,register_date,period,submitted_at,class_id,subject_id&order=submitted_at.desc&limit=15');el('submittedRegs').innerHTML=rs.length?'<div class="tablewrap"><table><thead><tr><th>DATE</th><th>PERIOD</th><th>SUBMITTED</th></tr></thead><tbody>'+rs.map(r=>'<tr><td>'+esc(r.register_date)+'</td><td>'+esc(r.period||'General')+'</td><td>'+new Date(r.submitted_at).toLocaleString()+'</td></tr>').join('')+'</tbody></table></div>':'<div class="subtitle">No registers submitted yet.</div>'}catch(e){el('submittedRegs').textContent=e.message}}
+async function loadSubmittedRegisters(){try{let rs=await table('attendance_registers','school_id=eq.'+ctx.school_id+'&select=id,register_date,period,submitted_at,class_id,subject_id,submitted_by_name&order=submitted_at.desc&limit=15');el('submittedRegs').innerHTML=rs.length?'<div class="tablewrap"><table><thead><tr><th>DATE</th><th>PERIOD</th><th>SUBMITTED BY</th><th>SUBMITTED</th></tr></thead><tbody>'+rs.map(r=>'<tr><td>'+esc(r.register_date)+'</td><td>'+esc(r.period||'General')+'</td><td><b>'+esc(r.submitted_by_name||'Staff')+'</b></td><td>'+new Date(r.submitted_at).toLocaleString()+'</td></tr>').join('')+'</tbody></table></div>':'<div class="subtitle">No registers submitted yet.</div>'}catch(e){el('submittedRegs').textContent=e.message}}
 async function renderFinance(){
  const [charges,pays,students]=await Promise.all([table('fee_charges','school_id=eq.'+ctx.school_id+'&select=*'),table('payments','school_id=eq.'+ctx.school_id+'&select=*'),table('students','school_id=eq.'+ctx.school_id+'&select=id,student_no,first_name,last_name')]);
  const charged=charges.reduce((s,x)=>s+Number(x.amount),0),paid=pays.filter(x=>x.status==='completed').reduce((s,x)=>s+Number(x.amount),0);
@@ -265,6 +267,22 @@ async function renderReports(){
  el('content').innerHTML='<div class="pagehead"><div><h1>Student Fees & Balances Report</h1><div class="subtitle">Official school finance report · '+new Date().toLocaleDateString()+'</div></div></div><div class="toolbar no-print"><button class="btn primary" onclick="printPage()">Print / Save PDF</button></div><div class="print-only"><h2>'+esc(ctx.school_name)+'</h2><p>Student Fees & Balances Report</p></div><div class="tablewrap"><table><thead><tr><th>STUDENT NO.</th><th>STUDENT</th><th>CLASS</th><th>CHARGED</th><th>PAID</th><th>BALANCE</th></tr></thead><tbody>'+rows.map(r=>'<tr><td>'+esc(r.student_no)+'</td><td><b>'+esc(r.student_name)+'</b></td><td>'+esc(r.class_name||'')+'</td><td>'+money(r.total_charged)+'</td><td>'+money(r.total_paid)+'</td><td><b>'+money(r.balance)+'</b></td></tr>').join('')+'<tr><td colspan="3"><b>TOTALS</b></td><td><b>'+money(totalC)+'</b></td><td><b>'+money(totalP)+'</b></td><td><b>'+money(totalC-totalP)+'</b></td></tr></tbody></table></div>';
 }
 function printPage(){if(window.Android?.printPage)Android.printPage('Student Fees & Balances Report');else window.print()}
+
+async function renderSetup(){
+ const [classes,subjects]=await Promise.all([
+  table('classes','school_id=eq.'+ctx.school_id+'&select=*&order=name'),
+  table('subjects','school_id=eq.'+ctx.school_id+'&select=*&order=name')
+ ]);
+ el('content').innerHTML='<div class="pagehead"><div><h1>School Setup</h1><div class="subtitle">Set up classes and subjects before teachers start registers and academics.</div></div></div>'+
+ '<div class="grid" style="grid-template-columns:1fr 1fr">'+
+ '<div class="card"><h3>Classes</h3><div class="toolbar"><button class="btn primary" onclick="classForm()">+ Add class</button></div><div class="tablewrap"><table style="min-width:0"><thead><tr><th>CLASS</th><th>LEVEL</th><th>ROOM</th></tr></thead><tbody>'+classes.map(x=>'<tr><td><b>'+esc(x.name)+'</b></td><td>'+esc(x.level||'')+'</td><td>'+esc(x.room||'')+'</td></tr>').join('')+'</tbody></table></div></div>'+
+ '<div class="card"><h3>Subjects</h3><div class="toolbar"><button class="btn primary" onclick="subjectForm()">+ Add subject</button></div><div class="tablewrap"><table style="min-width:0"><thead><tr><th>SUBJECT</th><th>CODE</th></tr></thead><tbody>'+subjects.map(x=>'<tr><td><b>'+esc(x.name)+'</b></td><td>'+esc(x.code||'')+'</td></tr>').join('')+'</tbody></table></div></div></div>';
+}
+function classForm(){modal('<h2>Add class</h2><div class="field"><label>Class name</label><input id="clName" placeholder="Example: Form 1A"></div><div class="field"><label>Level</label><input id="clLevel" placeholder="Example: Form 1"></div><div class="field"><label>Room</label><input id="clRoom" placeholder="Example: Room 4"></div><div class="toolbar"><button class="btn soft" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="saveClass()">Save class</button></div>')}
+async function saveClass(){await insert('classes',{school_id:ctx.school_id,name:el('clName').value,level:el('clLevel').value,room:el('clRoom').value,active:true});closeModal();renderSetup()}
+function subjectForm(){modal('<h2>Add subject</h2><div class="field"><label>Subject name</label><input id="subName" placeholder="Example: Mathematics"></div><div class="field"><label>Code</label><input id="subCode" placeholder="Example: MATH"></div><div class="toolbar"><button class="btn soft" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="saveSubject()">Save subject</button></div>')}
+async function saveSubject(){await insert('subjects',{school_id:ctx.school_id,name:el('subName').value,code:el('subCode').value});closeModal();renderSetup()}
+
 async function renderTeam(){
  const inv=await table('user_invites','school_id=eq.'+ctx.school_id+'&select=*&order=created_at.desc');
  el('content').innerHTML='<div class="pagehead"><div><h1>Users & Access</h1><div class="subtitle">Create secure invitation codes for teachers and other staff.</div></div></div><div class="toolbar"><button class="btn primary" onclick="inviteForm()">+ Invite user</button></div><div class="tablewrap"><table><thead><tr><th>NAME</th><th>ROLE</th><th>INVITE CODE</th><th>EXPIRES</th><th>STATUS</th></tr></thead><tbody>'+inv.map(i=>'<tr><td>'+esc(i.full_name)+'</td><td>'+esc(i.role)+'</td><td><b>'+esc(i.code)+'</b></td><td>'+new Date(i.expires_at).toLocaleDateString()+'</td><td><span class="badge '+(i.used_at?'green':'amber')+'">'+(i.used_at?'Used':'Open')+'</span></td></tr>').join('')+'</tbody></table></div>';

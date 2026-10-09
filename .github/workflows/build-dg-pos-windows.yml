@@ -69,7 +69,10 @@ jobs:
         shell: pwsh
         run: |
           & ".\dist\DG POS.exe" --self-test
-          if ($LASTEXITCODE -ne 0) { throw "Packaged DG POS EXE self-test failed" }
+          $code = $LASTEXITCODE
+          $log = Join-Path $env:TEMP "dg_pos_self_test.log"
+          if (Test-Path $log) { Get-Content $log }
+          if ($code -ne 0) { throw "Packaged DG POS EXE self-test failed" }
 
       - name: Package client delivery
         working-directory: buildsrc

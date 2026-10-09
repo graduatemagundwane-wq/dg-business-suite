@@ -68,11 +68,12 @@ jobs:
         working-directory: buildsrc
         shell: pwsh
         run: |
-          & ".\dist\DG POS.exe" --self-test
-          $code = $LASTEXITCODE
           $log = Join-Path $env:TEMP "dg_pos_self_test.log"
+          Remove-Item $log -Force -ErrorAction SilentlyContinue
+          $p = Start-Process -FilePath ".\dist\DG POS.exe" -ArgumentList "--self-test" -Wait -PassThru
           if (Test-Path $log) { Get-Content $log }
-          if ($code -ne 0) { throw "Packaged DG POS EXE self-test failed" }
+          if ($p.ExitCode -ne 0) { throw "Packaged DG POS EXE self-test failed with exit code $($p.ExitCode)" }
+          if (-not (Test-Path $log) -or (Get-Content $log -Raw).Trim() -ne "PASS") { throw "Packaged DG POS EXE did not report PASS" }
 
       - name: Package client delivery
         working-directory: buildsrc

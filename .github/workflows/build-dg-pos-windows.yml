@@ -60,6 +60,7 @@ jobs:
             --add-data "VERSION;." `
             --paths "desktop" `
             --collect-all webview `
+            --collect-all uvicorn `
             --collect-all winotify `
             --hidden-import win32print `
             desktop/desktop_app.py

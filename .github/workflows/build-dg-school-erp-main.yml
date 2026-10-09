@@ -1,0 +1,36 @@
+name: Build DG School ERP APK
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/build-dg-school-erp-main.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: dg-school-erp-android
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+      - name: Install Android SDK
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - name: Build release APK
+        run: gradle -p dg-school-erp-android assembleRelease --stacktrace
+      - name: Rename APK
+        run: cp dg-school-erp-android/app/build/outputs/apk/release/app-release.apk DG-School-ERP-Pro-v1.0.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DG-School-ERP-Pro-v1.0
+          path: DG-School-ERP-Pro-v1.0.apk
+          if-no-files-found: error

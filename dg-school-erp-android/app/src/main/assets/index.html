@@ -1,0 +1,294 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>DG School ERP</title>
+<style>
+:root{--green:#062e2a;--green2:#0c4a43;--gold:#d7b45a;--bg:#f4f7f6;--card:#fff;--ink:#10201e;--muted:#70807d;--red:#b74646;--line:#dfe7e5}
+*{box-sizing:border-box}body{margin:0;font-family:Inter,Arial,sans-serif;background:var(--bg);color:var(--ink)}button,input,select,textarea{font:inherit}.hidden{display:none!important}
+.top{height:64px;background:var(--green);color:#fff;display:flex;align-items:center;padding:0 18px;gap:12px;position:sticky;top:0;z-index:10}.brand{font-weight:800;letter-spacing:.2px}.logo{width:38px;height:38px;border-radius:12px;background:var(--gold);color:var(--green);display:grid;place-items:center;font-weight:900}.grow{flex:1}.pill{border:1px solid #ffffff33;border-radius:999px;padding:8px 12px;font-size:12px}.shell{display:grid;grid-template-columns:230px 1fr;min-height:calc(100vh - 64px)}nav{background:#082824;color:#dce9e6;padding:16px 12px;position:sticky;top:64px;height:calc(100vh - 64px);overflow:auto}.navbtn{width:100%;border:0;background:transparent;color:inherit;text-align:left;padding:12px 14px;border-radius:12px;margin:2px 0}.navbtn.active,.navbtn:hover{background:#fff;color:var(--green);font-weight:700}.section{font-size:10px;letter-spacing:1.5px;color:#8fb0aa;margin:18px 12px 6px}main{padding:24px;max-width:1400px;width:100%}.pagehead{display:flex;align-items:center;gap:12px;margin-bottom:18px}.pagehead h1{font-size:28px;margin:0}.subtitle{color:var(--muted);font-size:13px}.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:18px;box-shadow:0 8px 24px #0a2f2a0a}.kpi strong{display:block;font-size:26px;margin-top:7px}.kpi span{font-size:12px;color:var(--muted)}.toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:14px 0}.btn{border:0;border-radius:11px;padding:11px 15px;font-weight:700;cursor:pointer}.primary{background:#0f766a;color:white}.gold{background:var(--gold);color:var(--green)}.soft{background:#eef4f2;color:var(--green)}.danger{background:#fdecec;color:#9e2d2d}.field{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}.field label{font-size:11px;font-weight:700;color:#49605c}.field input,.field select,.field textarea{border:1px solid #cad8d5;border-radius:11px;padding:12px;background:#fff;outline:none}.field input::placeholder,.field textarea::placeholder{color:#adb9b6}.formgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.tablewrap{overflow:auto;border:1px solid var(--line);border-radius:16px;background:#fff}table{border-collapse:collapse;width:100%;min-width:760px}th,td{padding:12px 14px;border-bottom:1px solid #edf1f0;text-align:left;font-size:12px}th{font-size:10px;letter-spacing:.8px;color:#60706d;background:#f8fbfa}.badge{display:inline-block;padding:5px 9px;border-radius:999px;background:#edf5f3;font-size:10px;font-weight:800}.red{background:#fdecec;color:#9e2d2d}.amber{background:#fff4d8;color:#8f6712}.green{background:#e5f7ee;color:#176442}.modal{position:fixed;inset:0;background:#062e2acc;display:grid;place-items:center;padding:18px;z-index:40}.modalbox{width:min(720px,100%);max-height:90vh;overflow:auto;background:#fff;border-radius:22px;padding:22px}.authwrap{min-height:100vh;background:linear-gradient(145deg,#062e2a,#0b4740);display:grid;place-items:center;padding:22px}.authcard{width:min(520px,100%);background:#fff;border-radius:24px;padding:28px;box-shadow:0 30px 80px #0005}.authcard h1{margin:12px 0 6px}.tabs{display:flex;gap:8px;margin:16px 0}.tabs button{flex:1}.notice{padding:12px 14px;border-radius:12px;background:#edf5f3;font-size:12px;margin:10px 0}.error{background:#fdecec;color:#922}.mobilebar{display:none}.register-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.student-row{display:grid;grid-template-columns:1fr repeat(4,72px);gap:8px;align-items:center;padding:10px;border-bottom:1px solid #edf1f0}.attbtn{border:1px solid #dce5e3;background:#fff;border-radius:9px;padding:8px;font-size:10px}.attbtn.sel{background:#0f766a;color:#fff;border-color:#0f766a}.print-only{display:none}
+@media(max-width:900px){.shell{display:block}nav{display:none}main{padding:16px 12px 86px}.grid{grid-template-columns:1fr 1fr}.formgrid{grid-template-columns:1fr}.mobilebar{position:fixed;bottom:0;left:0;right:0;background:#062e2a;display:grid;grid-template-columns:repeat(5,1fr);z-index:20;padding:7px 4px calc(7px + env(safe-area-inset-bottom))}.mobilebar button{background:transparent;border:0;color:#fff;font-size:10px;padding:9px 2px}.top .pill{display:none}.pagehead h1{font-size:22px}}
+@media print{.top,nav,.mobilebar,.toolbar,.no-print{display:none!important}.shell{display:block}main{padding:0}.card,.tablewrap{box-shadow:none;border-color:#bbb}.print-only{display:block}}
+</style>
+</head>
+<body>
+<div id="auth" class="authwrap">
+  <div class="authcard">
+    <div class="logo">DG</div>
+    <h1>DG School ERP</h1>
+    <div class="subtitle">Double Gee Tech · School operations in one premium system.</div>
+    <div class="tabs">
+      <button class="btn primary" onclick="showAuthTab('login')">Sign in</button>
+      <button class="btn soft" onclick="showAuthTab('school')">Register school</button>
+      <button class="btn soft" onclick="showAuthTab('join')">Join school</button>
+    </div>
+    <div id="loginTab">
+      <div class="field"><label>Email</label><input id="loginEmail" type="email" placeholder="admin@school.co.zw"></div>
+      <div class="field"><label>Password</label><input id="loginPass" type="password" placeholder="Your password"></div>
+      <button class="btn primary" style="width:100%" onclick="login()">Sign in</button>
+    </div>
+    <div id="schoolTab" class="hidden">
+      <div class="formgrid">
+        <div class="field"><label>School name</label><input id="rSchool" placeholder="Example: Excellence College"></div>
+        <div class="field"><label>Administrator name</label><input id="rName" placeholder="Example: T. Moyo"></div>
+        <div class="field"><label>Email</label><input id="rEmail" type="email" placeholder="admin@school.co.zw"></div>
+        <div class="field"><label>Phone</label><input id="rPhone" placeholder="+263 ..."></div>
+        <div class="field"><label>Address</label><input id="rAddress" placeholder="School address"></div>
+        <div class="field"><label>Country</label><input id="rCountry" placeholder="Zimbabwe"></div>
+        <div class="field"><label>Currency</label><select id="rCurrency"><option>USD</option><option>ZiG</option><option>ZAR</option></select></div>
+        <div class="field"><label>Academic year</label><input id="rYear" placeholder="2026"></div>
+        <div class="field"><label>Term</label><input id="rTerm" placeholder="Term 1"></div>
+        <div class="field"><label>Password</label><input id="rPass" type="password" placeholder="At least 8 characters"></div>
+      </div>
+      <button class="btn primary" style="width:100%" onclick="registerSchool()">Register school</button>
+    </div>
+    <div id="joinTab" class="hidden">
+      <div class="notice">Your school administrator gives you an invitation code. Create your account, confirm your email if requested, then redeem the code.</div>
+      <div class="field"><label>Full name</label><input id="jName" placeholder="Your full name"></div>
+      <div class="field"><label>Email</label><input id="jEmail" type="email" placeholder="you@email.com"></div>
+      <div class="field"><label>Password</label><input id="jPass" type="password" placeholder="At least 8 characters"></div>
+      <div class="field"><label>Invitation code</label><input id="jCode" placeholder="Example: A1B2C3D4E5"></div>
+      <button class="btn primary" style="width:100%" onclick="joinSchool()">Create account / join</button>
+    </div>
+    <div id="authMsg"></div>
+    <button class="btn soft" style="width:100%;margin-top:14px" onclick="openDG()">Double Gee Tech Control Center</button>
+  </div>
+</div>
+
+<div id="pending" class="authwrap hidden">
+ <div class="authcard">
+   <div class="logo">DG</div><h1>Awaiting activation</h1>
+   <p>Your school registration is complete. Double Gee Tech must activate this account before school data can be used.</p>
+   <div class="notice" id="pendingInfo"></div>
+   <button class="btn primary" onclick="loadContext()">Check activation</button>
+   <button class="btn soft" onclick="logout()">Sign out</button>
+ </div>
+</div>
+
+<div id="app" class="hidden">
+ <header class="top"><div class="logo">DG</div><div><div class="brand">DG School ERP</div><div id="schoolTop" style="font-size:10px;color:#b7d0cb"></div></div><div class="grow"></div><div id="roleTop" class="pill"></div><button class="btn gold no-print" onclick="logout()">Sign out</button></header>
+ <div class="shell">
+  <nav>
+   <div class="section">MAIN</div>
+   <button class="navbtn active" data-page="dashboard" onclick="go('dashboard',this)">Dashboard</button>
+   <button class="navbtn" data-page="attention" onclick="go('attention',this)">Needs Attention</button>
+   <button class="navbtn" data-page="admissions" onclick="go('admissions',this)">Admissions</button>
+   <button class="navbtn" data-page="students" onclick="go('students',this)">Students</button>
+   <button class="navbtn" data-page="register" onclick="go('register',this)">Class Register</button>
+   <button class="navbtn" data-page="academics" onclick="go('academics',this)">Academics</button>
+   <div class="section">MANAGEMENT</div>
+   <button class="navbtn" data-page="finance" onclick="go('finance',this)">Finance</button>
+   <button class="navbtn" data-page="hr" onclick="go('hr',this)">HR & Payroll</button>
+   <button class="navbtn" data-page="operations" onclick="go('operations',this)">Operations</button>
+   <button class="navbtn" data-page="support" onclick="go('support',this)">Student Support</button>
+   <button class="navbtn" data-page="communications" onclick="go('communications',this)">Communications</button>
+   <button class="navbtn" data-page="reports" onclick="go('reports',this)">Reports</button>
+   <button class="navbtn" data-page="team" onclick="go('team',this)">Users & Access</button>
+  </nav>
+  <main id="content"></main>
+ </div>
+ <div class="mobilebar">
+   <button onclick="go('dashboard')">Home</button><button onclick="go('students')">Students</button><button onclick="go('register')">Register</button><button onclick="go('finance')">Finance</button><button onclick="go('reports')">Reports</button>
+ </div>
+</div>
+
+<div id="modal" class="modal hidden"><div class="modalbox"><div id="modalBody"></div></div></div>
+
+<div id="dg" class="authwrap hidden">
+ <div class="authcard">
+   <div class="logo">DG</div><h1>DG Control Center</h1><div class="subtitle">Double Gee Tech owner access only.</div>
+   <div class="tabs"><button class="btn primary" onclick="dgMode('login')">Owner sign in</button><button class="btn soft" onclick="dgMode('setup')">First owner setup</button></div>
+   <div id="dgLogin">
+     <div class="field"><label>Email</label><input id="dgEmail" type="email" placeholder="owner@doublegeetech.co.zw"></div>
+     <div class="field"><label>Password</label><input id="dgPass" type="password" placeholder="Owner password"></div>
+     <button class="btn primary" style="width:100%" onclick="dgLogin()">Open Control Center</button>
+   </div>
+   <div id="dgSetup" class="hidden">
+     <div class="field"><label>Owner full name</label><input id="dgName" placeholder="DG owner name"></div>
+     <div class="field"><label>Email</label><input id="dgSEmail" type="email" placeholder="owner@doublegeetech.co.zw"></div>
+     <div class="field"><label>Password</label><input id="dgSPass" type="password" placeholder="Strong password"></div>
+     <div class="field"><label>Bootstrap code</label><input id="dgCode" placeholder="Private setup code"></div>
+     <button class="btn primary" style="width:100%" onclick="dgBootstrap()">Create first DG owner</button>
+   </div>
+   <div id="dgMsg"></div>
+   <button class="btn soft" style="width:100%;margin-top:12px" onclick="closeDG()">Back to school login</button>
+ </div>
+</div>
+
+<div id="dgApp" class="hidden">
+ <header class="top"><div class="logo">DG</div><div><div class="brand">DG ERP Control Center</div><div style="font-size:10px;color:#b7d0cb">Double Gee Tech</div></div><div class="grow"></div><button class="btn gold" onclick="dgLogout()">Sign out</button></header>
+ <main><div class="pagehead"><div><h1>School Accounts</h1><div class="subtitle">Authorize and control every DG School ERP customer.</div></div><div class="grow"></div><button class="btn primary" onclick="loadDgSchools()">Refresh</button></div><div id="dgSchools"></div></main>
+</div>
+
+<script>
+const SB='https://duamtfluuklpkhmduhpi.supabase.co';
+const KEY='sb_publishable_n4XGTVVRImhWEoPesKJCPQ_TfKBXryn';
+let session=JSON.parse(localStorage.getItem('dg_session')||'null'), ctx=null, cache={};
+
+function el(id){return document.getElementById(id)}
+function msg(id,text,bad=false){el(id).innerHTML=text?'<div class="notice '+(bad?'error':'')+'">'+text+'</div>':''}
+function showAuthTab(t){['login','school','join'].forEach(x=>el(x+'Tab').classList.toggle('hidden',x!==t));msg('authMsg','')}
+function dgMode(t){el('dgLogin').classList.toggle('hidden',t!=='login');el('dgSetup').classList.toggle('hidden',t!=='setup')}
+function headers(auth=true){let h={'Content-Type':'application/json','apikey':KEY};if(auth&&session?.access_token)h.Authorization='Bearer '+session.access_token;return h}
+async function req(url,opt={}){let r=await fetch(url,{...opt,headers:{...headers(opt.auth!==false),...(opt.headers||{})}});let text=await r.text();let data={};try{data=text?JSON.parse(text):{}}catch{data={message:text}}if(!r.ok)throw Error(data.error_description||data.msg||data.message||data.error||('HTTP '+r.status));return data}
+async function login(){
+ try{let d=await req(SB+'/auth/v1/token?grant_type=password',{method:'POST',auth:false,body:JSON.stringify({email:el('loginEmail').value,password:el('loginPass').value})});session=d;localStorage.setItem('dg_session',JSON.stringify(d));await loadContext()}catch(e){msg('authMsg',e.message,true)}
+}
+async function refreshSession(){
+ if(!session?.refresh_token)return false;
+ try{let d=await req(SB+'/auth/v1/token?grant_type=refresh_token',{method:'POST',auth:false,body:JSON.stringify({refresh_token:session.refresh_token})});session=d;localStorage.setItem('dg_session',JSON.stringify(d));return true}catch{return false}
+}
+async function registerSchool(){
+ try{
+  const body={school_name:el('rSchool').value,full_name:el('rName').value,email:el('rEmail').value,password:el('rPass').value,phone:el('rPhone').value,address:el('rAddress').value,country:el('rCountry').value||'Zimbabwe',currency:el('rCurrency').value,academic_year:el('rYear').value,term:el('rTerm').value};
+  let d=await req(SB+'/functions/v1/register-school',{method:'POST',auth:false,body:JSON.stringify(body)});
+  msg('authMsg',d.message+' You can now sign in.');
+  el('loginEmail').value=body.email;showAuthTab('login');
+ }catch(e){msg('authMsg',e.message,true)}
+}
+async function joinSchool(){
+ try{
+  let d=await req(SB+'/auth/v1/signup',{method:'POST',auth:false,body:JSON.stringify({email:el('jEmail').value,password:el('jPass').value,data:{full_name:el('jName').value}})});
+  if(d.access_token){session=d;localStorage.setItem('dg_session',JSON.stringify(d));await redeemInvite()}
+  else msg('authMsg','Account created. Confirm your email, then sign in and redeem your invitation code.');
+ }catch(e){msg('authMsg',e.message,true)}
+}
+async function redeemInvite(){
+ let code=el('jCode')?.value||localStorage.getItem('pending_invite');if(!code)return;
+ try{await rpc('redeem_invite',{p_code:code,p_full_name:el('jName')?.value||''});localStorage.removeItem('pending_invite');await loadContext()}catch(e){localStorage.setItem('pending_invite',code);msg('authMsg',e.message,true)}
+}
+async function rpc(name,body={}){return await req(SB+'/rest/v1/rpc/'+name,{method:'POST',body:JSON.stringify(body)})}
+async function loadContext(){
+ try{
+  if(!session?.access_token){showOnly('auth');return}
+  let rows=await rpc('my_school',{}); if(!Array.isArray(rows)||!rows.length){showOnly('auth');showAuthTab('join');msg('authMsg','Your account is not attached to a school yet. Enter your invitation code.');return}
+  ctx=rows[0];localStorage.setItem('dg_ctx',JSON.stringify(ctx));
+  if(ctx.school_status!=='active'){el('pendingInfo').textContent=ctx.school_name+' · '+String(ctx.school_status).toUpperCase();showOnly('pending');return}
+  if(ctx.expiry_date&&new Date(ctx.expiry_date)<new Date()){el('pendingInfo').textContent='Licence expired '+ctx.expiry_date;showOnly('pending');return}
+  showOnly('app');el('schoolTop').textContent=ctx.school_name;el('roleTop').textContent=ctx.role.replaceAll('_',' ');go('dashboard');
+ }catch(e){if(String(e.message).includes('JWT')){if(await refreshSession())return loadContext()}showOnly('auth');msg('authMsg',e.message,true)}
+}
+function showOnly(id){['auth','pending','app','dg','dgApp'].forEach(x=>el(x).classList.toggle('hidden',x!==id))}
+function logout(){localStorage.removeItem('dg_session');session=null;ctx=null;showOnly('auth')}
+async function table(name,query=''){return await req(SB+'/rest/v1/'+name+'?'+query,{method:'GET',headers:{Prefer:'count=exact'}})}
+async function insert(name,obj){return await req(SB+'/rest/v1/'+name,{method:'POST',body:JSON.stringify(obj),headers:{Prefer:'return=representation'}})}
+async function update(name,id,obj){return await req(SB+'/rest/v1/'+name+'?id=eq.'+id,{method:'PATCH',body:JSON.stringify(obj),headers:{Prefer:'return=representation'}})}
+const money=n=>(Number(n)||0).toFixed(2);
+function modal(html){el('modalBody').innerHTML=html;el('modal').classList.remove('hidden')}
+function closeModal(){el('modal').classList.add('hidden')}
+function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+function go(page,btn){
+ document.querySelectorAll('.navbtn').forEach(b=>b.classList.toggle('active',b.dataset.page===page));
+ render(page).catch(e=>el('content').innerHTML='<div class="notice error">'+esc(e.message)+'</div>');
+}
+async function render(page){
+ const C=el('content');C.innerHTML='<div class="card">Loading…</div>';
+ if(page==='dashboard')return renderDashboard();
+ if(page==='students')return renderStudents();
+ if(page==='register')return renderRegister();
+ if(page==='finance')return renderFinance();
+ if(page==='reports')return renderReports();
+ if(page==='team')return renderTeam();
+ if(page==='attention')return renderGeneric('Needs Attention','needs_attention');
+ if(page==='admissions')return renderAdmissions();
+ return renderModule(page);
+}
+async function renderDashboard(){
+ const [students,regs,charges,pays,attention]=await Promise.all([
+  table('students','school_id=eq.'+ctx.school_id+'&select=id'),
+  table('attendance_registers','school_id=eq.'+ctx.school_id+'&register_date=eq.'+new Date().toISOString().slice(0,10)+'&select=id'),
+  table('fee_charges','school_id=eq.'+ctx.school_id+'&select=amount'),
+  table('payments','school_id=eq.'+ctx.school_id+'&status=eq.completed&select=amount'),
+  table('needs_attention','school_id=eq.'+ctx.school_id+'&resolved=eq.false&select=id,title,severity')
+ ]);
+ const charged=charges.reduce((s,x)=>s+Number(x.amount),0),paid=pays.reduce((s,x)=>s+Number(x.amount),0);
+ el('content').innerHTML='<div class="pagehead"><div><h1>Dashboard</h1><div class="subtitle">Live school operations at a glance.</div></div></div>'+
+ '<div class="grid">'+kpi('Students',students.length)+kpi('Registers today',regs.length)+kpi('Outstanding fees',money(charged-paid)+' '+ctxCurrency())+kpi('Needs Attention',attention.length)+'</div>'+
+ '<div class="card" style="margin-top:16px"><h3>Priority queue</h3>'+(attention.length?attention.slice(0,6).map(a=>'<div class="notice">'+esc(a.title)+' <span class="badge '+(a.severity==='high'?'red':'amber')+'">'+esc(a.severity)+'</span></div>').join(''):'<div class="subtitle">No unresolved alerts.</div>')+'</div>';
+}
+function kpi(t,v){return '<div class="card kpi"><span>'+esc(t)+'</span><strong>'+esc(v)+'</strong></div>'}
+function ctxCurrency(){return localStorage.getItem('currency')||'USD'}
+async function renderStudents(){
+ const rows=await table('students','school_id=eq.'+ctx.school_id+'&select=id,student_no,first_name,last_name,status,class_id,guardian_name,guardian_phone&order=created_at.desc');
+ el('content').innerHTML='<div class="pagehead"><div><h1>Students</h1><div class="subtitle">Learner records and guardians.</div></div></div><div class="toolbar"><button class="btn primary" onclick="studentForm()">+ Add student</button></div>'+
+ '<div class="tablewrap"><table><thead><tr><th>STUDENT NO.</th><th>NAME</th><th>GUARDIAN</th><th>PHONE</th><th>STATUS</th></tr></thead><tbody>'+
+ rows.map(r=>'<tr><td>'+esc(r.student_no)+'</td><td><b>'+esc(r.first_name+' '+r.last_name)+'</b></td><td>'+esc(r.guardian_name)+'</td><td>'+esc(r.guardian_phone)+'</td><td><span class="badge green">'+esc(r.status)+'</span></td></tr>').join('')+'</tbody></table></div>';
+}
+function studentForm(){modal('<h2>Add student</h2><div class="formgrid"><div class="field"><label>Student number</label><input id="sNo" placeholder="STU-001"></div><div class="field"><label>First name</label><input id="sFirst" placeholder="First name"></div><div class="field"><label>Last name</label><input id="sLast" placeholder="Last name"></div><div class="field"><label>Guardian</label><input id="sGuard" placeholder="Parent / guardian"></div><div class="field"><label>Guardian phone</label><input id="sPhone" placeholder="+263 ..."></div></div><div class="toolbar"><button class="btn soft" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="saveStudent()">Save student</button></div>')}
+async function saveStudent(){try{await insert('students',{school_id:ctx.school_id,student_no:el('sNo').value,first_name:el('sFirst').value,last_name:el('sLast').value,guardian_name:el('sGuard').value,guardian_phone:el('sPhone').value,status:'active'});closeModal();renderStudents()}catch(e){alert(e.message)}}
+async function renderAdmissions(){
+ const rows=await table('admission_enquiries','school_id=eq.'+ctx.school_id+'&select=*&order=created_at.desc');
+ el('content').innerHTML='<div class="pagehead"><div><h1>Admissions & Learner Lifecycle</h1><div class="subtitle">From enquiry to admission without retyping learner data.</div></div></div><div class="toolbar"><button class="btn primary" onclick="enquiryForm()">+ Add enquiry</button></div><div class="tablewrap"><table><thead><tr><th>LEARNER</th><th>PARENT</th><th>PHONE</th><th>SOURCE</th><th>STAGE</th></tr></thead><tbody>'+rows.map(r=>'<tr><td><b>'+esc(r.learner_name)+'</b></td><td>'+esc(r.parent_name)+'</td><td>'+esc(r.phone)+'</td><td>'+esc(r.source)+'</td><td><span class="badge">'+esc(r.stage)+'</span></td></tr>').join('')+'</tbody></table></div>';
+}
+function enquiryForm(){modal('<h2>Add enquiry</h2><div class="formgrid"><div class="field"><label>Learner name</label><input id="eLearner" placeholder="Learner full name"></div><div class="field"><label>Parent / guardian</label><input id="eParent" placeholder="Parent name"></div><div class="field"><label>Phone</label><input id="ePhone" placeholder="+263 ..."></div><div class="field"><label>Source</label><input id="eSource" placeholder="WhatsApp / Walk-in / Referral"></div><div class="field"><label>Interested class</label><input id="eClass" placeholder="Form 1"></div><div class="field"><label>Owner</label><input id="eOwner" placeholder="Registrar"></div></div><div class="toolbar"><button class="btn soft" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="saveEnquiry()">Save</button></div>')}
+async function saveEnquiry(){await insert('admission_enquiries',{school_id:ctx.school_id,learner_name:el('eLearner').value,parent_name:el('eParent').value,phone:el('ePhone').value,source:el('eSource').value,interested_class:el('eClass').value,owner_name:el('eOwner').value,stage:'enquiry'});closeModal();renderAdmissions()}
+async function renderRegister(){
+ const [classes,subjects,students]=await Promise.all([table('classes','school_id=eq.'+ctx.school_id+'&select=*'),table('subjects','school_id=eq.'+ctx.school_id+'&select=*'),table('students','school_id=eq.'+ctx.school_id+'&status=eq.active&select=id,student_no,first_name,last_name,class_id&order=last_name')]);
+ cache={classes,subjects,students,marks:{}};
+ el('content').innerHTML='<div class="pagehead"><div><h1>Class Register</h1><div class="subtitle">Teachers and lecturers submit attendance; administrators see it instantly.</div></div></div>'+
+ '<div class="card"><div class="formgrid"><div class="field"><label>Class</label><select id="regClass" onchange="drawRegisterRows()"><option value="">Select class</option>'+classes.map(x=>'<option value="'+x.id+'">'+esc(x.name)+'</option>').join('')+'</select></div><div class="field"><label>Subject</label><select id="regSubject"><option value="">General register</option>'+subjects.map(x=>'<option value="'+x.id+'">'+esc(x.name)+'</option>').join('')+'</select></div><div class="field"><label>Date</label><input id="regDate" type="date" value="'+new Date().toISOString().slice(0,10)+'"></div><div class="field"><label>Period</label><input id="regPeriod" placeholder="Period 1 / Morning"></div></div><div id="regRows" class="tablewrap"><div style="padding:20px" class="subtitle">Choose a class to load learners.</div></div><div class="toolbar"><button class="btn primary" onclick="submitRegister()">Submit register</button></div></div>'+
+ '<div class="card" style="margin-top:16px"><h3>Submitted registers</h3><div id="submittedRegs">Loading…</div></div>';
+ loadSubmittedRegisters();
+}
+function drawRegisterRows(){let cid=el('regClass').value;let rs=cache.students.filter(s=>!s.class_id||s.class_id===cid);cache.marks={};el('regRows').innerHTML='<div class="student-row" style="font-weight:800"><div>Learner</div><div>P</div><div>A</div><div>L</div><div>Leave</div></div>'+rs.map(s=>'<div class="student-row"><div><b>'+esc(s.first_name+' '+s.last_name)+'</b><div class="subtitle">'+esc(s.student_no)+'</div></div>'+['present','absent','late','leave'].map(x=>'<button class="attbtn" id="a_'+s.id+'_'+x+'" onclick="markAtt(\''+s.id+'\',\''+x+'\')">'+x[0].toUpperCase()+'</button>').join('')+'</div>').join('')}
+function markAtt(id,status){cache.marks[id]=status;['present','absent','late','leave'].forEach(x=>el('a_'+id+'_'+x)?.classList.toggle('sel',x===status))}
+async function submitRegister(){
+ const cid=el('regClass').value;if(!cid)return alert('Select a class');
+ const learners=cache.students.filter(s=>!s.class_id||s.class_id===cid);if(!learners.length)return alert('No learners in this class');
+ for(const s of learners)if(!cache.marks[s.id])return alert('Mark every learner before submitting.');
+ try{
+  let r=await insert('attendance_registers',{school_id:ctx.school_id,class_id:cid,subject_id:el('regSubject').value||null,register_date:el('regDate').value,period:el('regPeriod').value||'',submitted_by:session.user?.id||session.user?.sub,status:'submitted'});
+  let regId=r[0].id;
+  for(const s of learners)await insert('attendance_entries',{school_id:ctx.school_id,register_id:regId,student_id:s.id,status:cache.marks[s.id]});
+  alert('Register submitted successfully.');renderRegister();
+ }catch(e){
+  const q=JSON.parse(localStorage.getItem('offline_registers')||'[]');q.push({class_id:cid,subject_id:el('regSubject').value||null,date:el('regDate').value,period:el('regPeriod').value,marks:cache.marks,queued_at:new Date().toISOString()});localStorage.setItem('offline_registers',JSON.stringify(q));alert('Internet unavailable. Register saved on this device and will remain visible as pending sync.');
+ }
+}
+async function loadSubmittedRegisters(){try{let rs=await table('attendance_registers','school_id=eq.'+ctx.school_id+'&select=id,register_date,period,submitted_at,class_id,subject_id&order=submitted_at.desc&limit=15');el('submittedRegs').innerHTML=rs.length?'<div class="tablewrap"><table><thead><tr><th>DATE</th><th>PERIOD</th><th>SUBMITTED</th></tr></thead><tbody>'+rs.map(r=>'<tr><td>'+esc(r.register_date)+'</td><td>'+esc(r.period||'General')+'</td><td>'+new Date(r.submitted_at).toLocaleString()+'</td></tr>').join('')+'</tbody></table></div>':'<div class="subtitle">No registers submitted yet.</div>'}catch(e){el('submittedRegs').textContent=e.message}}
+async function renderFinance(){
+ const [charges,pays,students]=await Promise.all([table('fee_charges','school_id=eq.'+ctx.school_id+'&select=*'),table('payments','school_id=eq.'+ctx.school_id+'&select=*'),table('students','school_id=eq.'+ctx.school_id+'&select=id,student_no,first_name,last_name')]);
+ const charged=charges.reduce((s,x)=>s+Number(x.amount),0),paid=pays.filter(x=>x.status==='completed').reduce((s,x)=>s+Number(x.amount),0);
+ el('content').innerHTML='<div class="pagehead"><div><h1>Finance</h1><div class="subtitle">Fees, payments, receipts and balances.</div></div></div><div class="grid">'+kpi('Charged',money(charged))+kpi('Paid',money(paid))+kpi('Outstanding',money(charged-paid))+kpi('Currency',ctxCurrency())+'</div><div class="toolbar"><button class="btn primary" onclick="chargeForm()">Post fee charge</button><button class="btn gold" onclick="paymentForm()">Record payment</button><button class="btn soft" onclick="go(\'reports\')">Fees & Balances Report</button></div><div class="tablewrap"><table><thead><tr><th>RECEIPT</th><th>STUDENT</th><th>DATE</th><th>METHOD</th><th>AMOUNT</th></tr></thead><tbody>'+pays.map(p=>'<tr><td><b>'+esc(p.receipt_no)+'</b></td><td>'+esc(nameOf(students,p.student_id))+'</td><td>'+esc(p.payment_date)+'</td><td>'+esc(p.method)+'</td><td>'+money(p.amount)+' '+esc(p.currency)+'</td></tr>').join('')+'</tbody></table></div>';
+ cache.financeStudents=students;
+}
+function nameOf(a,id){let x=a.find(z=>z.id===id);return x?x.first_name+' '+x.last_name:id}
+function studentSelect(id){return '<select id="'+id+'">'+(cache.financeStudents||[]).map(s=>'<option value="'+s.id+'">'+esc(s.student_no+' · '+s.first_name+' '+s.last_name)+'</option>').join('')+'</select>'}
+function chargeForm(){modal('<h2>Post fee charge</h2><div class="field"><label>Student</label>'+studentSelect('fStudent')+'</div><div class="field"><label>Description</label><input id="fDesc" placeholder="Tuition / Levy / Exam fee"></div><div class="field"><label>Amount</label><input id="fAmt" type="number" step="0.01" placeholder="0.00"></div><div class="field"><label>Due date</label><input id="fDue" type="date"></div><div class="toolbar"><button class="btn soft" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="saveCharge()">Post charge</button></div>')}
+async function saveCharge(){await insert('fee_charges',{school_id:ctx.school_id,student_id:el('fStudent').value,description:el('fDesc').value,amount:Number(el('fAmt').value),currency:ctxCurrency(),due_date:el('fDue').value||null});closeModal();renderFinance()}
+function paymentForm(){modal('<h2>Record payment</h2><div class="field"><label>Student</label>'+studentSelect('pStudent')+'</div><div class="field"><label>Amount</label><input id="pAmt" type="number" step="0.01" placeholder="0.00"></div><div class="field"><label>Method</label><select id="pMethod"><option>Cash</option><option>EcoCash</option><option>Bank Transfer</option><option>Card</option></select></div><div class="field"><label>Reference</label><input id="pRef" placeholder="Optional payment reference"></div><div class="toolbar"><button class="btn soft" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="savePayment()">Save & issue receipt</button></div>')}
+async function savePayment(){let no='DG-R-'+Date.now().toString().slice(-8);await insert('payments',{school_id:ctx.school_id,student_id:el('pStudent').value,receipt_no:no,amount:Number(el('pAmt').value),currency:ctxCurrency(),method:el('pMethod').value,reference:el('pRef').value,payment_date:new Date().toISOString().slice(0,10),status:'completed'});closeModal();alert('Payment saved. Receipt '+no);renderFinance()}
+async function renderReports(){
+ const rows=await table('student_fee_balances','school_id=eq.'+ctx.school_id+'&select=*&order=student_name');
+ const totalC=rows.reduce((s,x)=>s+Number(x.total_charged),0),totalP=rows.reduce((s,x)=>s+Number(x.total_paid),0);
+ el('content').innerHTML='<div class="pagehead"><div><h1>Student Fees & Balances Report</h1><div class="subtitle">Official school finance report · '+new Date().toLocaleDateString()+'</div></div></div><div class="toolbar no-print"><button class="btn primary" onclick="printPage()">Print / Save PDF</button></div><div class="print-only"><h2>'+esc(ctx.school_name)+'</h2><p>Student Fees & Balances Report</p></div><div class="tablewrap"><table><thead><tr><th>STUDENT NO.</th><th>STUDENT</th><th>CLASS</th><th>CHARGED</th><th>PAID</th><th>BALANCE</th></tr></thead><tbody>'+rows.map(r=>'<tr><td>'+esc(r.student_no)+'</td><td><b>'+esc(r.student_name)+'</b></td><td>'+esc(r.class_name||'')+'</td><td>'+money(r.total_charged)+'</td><td>'+money(r.total_paid)+'</td><td><b>'+money(r.balance)+'</b></td></tr>').join('')+'<tr><td colspan="3"><b>TOTALS</b></td><td><b>'+money(totalC)+'</b></td><td><b>'+money(totalP)+'</b></td><td><b>'+money(totalC-totalP)+'</b></td></tr></tbody></table></div>';
+}
+function printPage(){if(window.Android?.printPage)Android.printPage('Student Fees & Balances Report');else window.print()}
+async function renderTeam(){
+ const inv=await table('user_invites','school_id=eq.'+ctx.school_id+'&select=*&order=created_at.desc');
+ el('content').innerHTML='<div class="pagehead"><div><h1>Users & Access</h1><div class="subtitle">Create secure invitation codes for teachers and other staff.</div></div></div><div class="toolbar"><button class="btn primary" onclick="inviteForm()">+ Invite user</button></div><div class="tablewrap"><table><thead><tr><th>NAME</th><th>ROLE</th><th>INVITE CODE</th><th>EXPIRES</th><th>STATUS</th></tr></thead><tbody>'+inv.map(i=>'<tr><td>'+esc(i.full_name)+'</td><td>'+esc(i.role)+'</td><td><b>'+esc(i.code)+'</b></td><td>'+new Date(i.expires_at).toLocaleDateString()+'</td><td><span class="badge '+(i.used_at?'green':'amber')+'">'+(i.used_at?'Used':'Open')+'</span></td></tr>').join('')+'</tbody></table></div>';
+}
+function inviteForm(){let roles=['principal','teacher','bursar','hr','librarian','transport','boarding','nurse','security','parent','student'];modal('<h2>Invite school user</h2><div class="field"><label>Full name</label><input id="iName" placeholder="Staff member / learner / guardian"></div><div class="field"><label>Role</label><select id="iRole">'+roles.map(r=>'<option value="'+r+'">'+r.replaceAll('_',' ')+'</option>').join('')+'</select></div><div class="toolbar"><button class="btn soft" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="saveInvite()">Generate invitation</button></div>')}
+async function saveInvite(){await insert('user_invites',{school_id:ctx.school_id,role:el('iRole').value,full_name:el('iName').value,created_by:session.user?.id||null});closeModal();renderTeam()}
+async function renderGeneric(title,tableName){
+ const rows=await table(tableName,'school_id=eq.'+ctx.school_id+'&select=*&order=created_at.desc&limit=100');
+ el('content').innerHTML='<div class="pagehead"><div><h1>'+esc(title)+'</h1></div></div><div class="tablewrap"><table><thead><tr><th>TITLE</th><th>DETAIL</th><th>STATUS</th></tr></thead><tbody>'+rows.map(r=>'<tr><td><b>'+esc(r.title||r.category||r.record_type||'Record')+'</b></td><td>'+esc(r.detail||'')+'</td><td>'+esc(r.status||'')+'</td></tr>').join('')+'</tbody></table></div>';
+}
+async function renderModule(module){
+ const rows=await table('module_records','school_id=eq.'+ctx.school_id+'&module=eq.'+encodeURIComponent(module)+'&select=*&order=created_at.desc');
+ const title=module[0].toUpperCase()+module.slice(1).replaceAll('_',' ');
+ el('content').innerHTML='<div class="pagehead"><div><h1>'+esc(title)+'</h1><div class="subtitle">Focused '+esc(title.toLowerCase())+' workspace.</div></div></div><div class="toolbar"><button class="btn primary" onclick="genericForm(\''+module+'\')">+ Add record</button></div><div class="tablewrap"><table><thead><tr><th>TITLE</th><th>TYPE</th><th>STATUS</th><th>CREATED</th></tr></thead><tbody>'+rows.map(r=>'<tr><td><b>'+esc(r.title)+'</b></td><td>'+esc(r.record_type)+'</td><td><span class="badge">'+esc(r.status||'Open')+'</span></td><td>'+new Date(r.created_at).toLocaleDateString()+'</td></tr>').join('')+'</tbody></table></div>';
+}
+function genericForm(module){modal('<h2>Add '+esc(module)+' record</h2><div class="field"><label>Record type</label><input id="gType" placeholder="Example: Leave request / Book / Route / Notice"></div><div class="field"><label>Title</label><input id="gTitle" placeholder="Record title"></div><div class="field"><label>Status</label><input id="gStatus" placeholder="Open"></div><div class="field"><label>Details</label><textarea id="gDetail" rows="5" placeholder="Enter details"></textarea></div><div class="toolbar"><button class="btn soft" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="saveGeneric(\''+module+'\')">Save record</button></div>')}
+async function saveGeneric(module){await insert('module_records',{school_id:ctx.school_id,module,record_type:el('gType').value||'general',title:el('gTitle').value,status:el('gStatus').value||'Open',data:{detail:el('gDetail').value}});closeModal();renderModule(module)}
+function openDG(){showOnly('dg')}function closeDG(){showOnly('auth')}function dgLogout(){localStorage.removeItem('dg_session');session=null;showOnly('dg')} 
+async function dgBootstrap(){try{let d=await req(SB+'/functions/v1/dg-control',{method:'POST',auth:false,body:JSON.stringify({op:'bootstrap_owner',bootstrap_code:el('dgCode').value,email:el('dgSEmail').value,password:el('dgSPass').value,full_name:el('dgName').value})});msg('dgMsg',d.message);dgMode('login')}catch(e){msg('dgMsg',e.message,true)}}
+async function dgLogin(){try{let d=await req(SB+'/auth/v1/token?grant_type=password',{method:'POST',auth:false,body:JSON.stringify({email:el('dgEmail').value,password:el('dgPass').value})});session=d;localStorage.setItem('dg_session',JSON.stringify(d));showOnly('dgApp');loadDgSchools()}catch(e){msg('dgMsg',e.message,true)}}
+async function dgCall(body){return await req(SB+'/functions/v1/dg-control',{method:'POST',body:JSON.stringify(body)})}
+async function loadDgSchools(){try{let d=await dgCall({op:'list_schools'});let dev=d.devices||[];el('dgSchools').innerHTML='<div class="tablewrap"><table><thead><tr><th>SCHOOL</th><th>STATUS</th><th>PLAN</th><th>EXPIRY</th><th>DEVICES</th><th>LAST ACTIVE</th><th>ACTIONS</th></tr></thead><tbody>'+d.schools.map(s=>'<tr><td><b>'+esc(s.name)+'</b><div class="subtitle">'+esc(s.email||'')+' · '+esc(s.code)+'</div></td><td><span class="badge '+(s.status==='active'?'green':s.status==='pending'?'amber':'red')+'">'+esc(s.status)+'</span></td><td>'+esc(s.plan)+'</td><td>'+esc(s.expiry_date||'—')+'</td><td>'+dev.filter(x=>x.school_id===s.id&&x.status==='authorized').length+' / '+s.device_limit+'</td><td>'+esc(s.last_activity_at?new Date(s.last_activity_at).toLocaleString():'—')+'</td><td><button class="btn soft" onclick="dgStatus(\''+s.id+'\',\'active\')">Activate</button> <button class="btn soft" onclick="dgStatus(\''+s.id+'\',\'suspended\')">Suspend</button> <button class="btn danger" onclick="dgStatus(\''+s.id+'\',\'revoked\')">Revoke</button> <button class="btn gold" onclick="dgExtend(\''+s.id+'\')">+30d</button></td></tr>').join('')+'</tbody></table></div>'}catch(e){el('dgSchools').innerHTML='<div class="notice error">'+esc(e.message)+'</div>'}}
+async function dgStatus(id,status){await dgCall({op:'set_status',school_id:id,status});loadDgSchools()}async function dgExtend(id){await dgCall({op:'extend_expiry',school_id:id,days:30});loadDgSchools()}
+window.addEventListener('online',()=>{let n=JSON.parse(localStorage.getItem('offline_registers')||'[]').length;if(n)console.log(n+' register(s) waiting for manual sync review')});
+(async()=>{if(session?.access_token)await loadContext();else showOnly('auth')})();
+</script>
+</body></html>

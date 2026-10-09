@@ -1,4 +1,5 @@
 name: Build DG School ERP APK
+# rebuild app source 2026-10-09T17:11:48.422Z
 on:
   push:
     branches: [ main ]

@@ -26,7 +26,7 @@ jobs:
         run: gradle --no-daemon :app:assembleDebug --stacktrace
       - uses: actions/upload-artifact@v4
         with:
-          name: DG-POS-Business-Android-APKs-v0.3.4
+          name: DG-POS-Business-Android-APKs-v0.3.5
           path: |
             app/build/outputs/apk/admin/debug/*.apk
             app/build/outputs/apk/owner/debug/*.apk

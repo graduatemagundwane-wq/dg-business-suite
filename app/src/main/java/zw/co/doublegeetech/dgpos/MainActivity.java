@@ -1,6 +1,13 @@
 package zw.co.doublegeetech.dgpos;
 
 import android.annotation.SuppressLint;
+import android.Manifest;
+import android.content.pm.PackageManager;
+import android.os.Build;
+import android.webkit.JavascriptInterface;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.content.Context;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.os.Bundle;
@@ -35,6 +42,23 @@ public class MainActivity extends Activity {
         FrameLayout layout = new FrameLayout(this);
         webView = new WebView(this);
         webView.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        NotificationHelper.createChannel(this);
+        if(Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS},300);
+        }
+        webView.addJavascriptInterface(new Object() {
+            @JavascriptInterface public String getRole(){ return BuildConfig.APP_ROLE; }
+            @JavascriptInterface public void setSession(String token,String role){
+                if(!roleMatches(role) || token==null || token.length()>5000)return;
+                NotificationHelper.saveToken(MainActivity.this,token);
+                NotificationHelper.schedule(MainActivity.this);
+            }
+            @JavascriptInterface public void clearSession(){NotificationHelper.clearSession(MainActivity.this);}
+            @JavascriptInterface public void showAlert(String id,String title,String message){
+                if(id==null || title==null || message==null)return;
+                NotificationHelper.postOnce(MainActivity.this,id,title,message);
+            }
+        },"DGNative");
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true); // persisted POS session and offline outbox
@@ -88,12 +112,19 @@ public class MainActivity extends Activity {
         setContentView(layout);
         webView.loadUrl(BuildConfig.ENTRY_URL);
     }
+    private boolean roleMatches(String role){
+        return "dg-control".equals(BuildConfig.APP_ROLE)?"dg_admin".equals(role)
+          :"owner".equals(BuildConfig.APP_ROLE)?("owner".equals(role)||"manager".equals(role))
+          :"worker".equals(role);
+    }
     @Override public void onBackPressed(){
         if(webView!=null && webView.canGoBack()) webView.goBack();
         else new AlertDialog.Builder(this).setMessage("Close DG POS?")
            .setNegativeButton("Stay",(d,w)->{})
            .setPositiveButton("Exit",(d,w)->finish()).show();
     }
+    @Override protected void onResume(){ super.onResume(); if(webView!=null) {webView.onResume(); NotificationHelper.runNow(this);} }
+    @Override protected void onPause(){ if(webView!=null)webView.onPause();super.onPause(); }
     @Override protected void onDestroy(){
         if(webView!=null){webView.destroy();webView=null;}
         super.onDestroy();

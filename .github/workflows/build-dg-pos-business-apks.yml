@@ -21,7 +21,7 @@ jobs:
       - name: Android SDK 35
         run: |
           echo "sdk.dir=$ANDROID_HOME" > local.properties
-          sdkmanager --install 'platforms;android-35' 'build-tools;35.0.0'
+          ls "$ANDROID_HOME/platforms" && ls "$ANDROID_HOME/build-tools"
       - name: Build three independent role APKs
         run: gradle --no-daemon :app:assembleDebug --stacktrace
       - uses: actions/upload-artifact@v4

@@ -26,6 +26,8 @@ import android.widget.FrameLayout;
 import android.widget.ProgressBar;
 import android.widget.Toast;
 import android.content.Intent;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.net.Uri;
 
 /** Distinct Android apps for the three DG POS roles. All call the same secured Neon API. */
@@ -48,6 +50,13 @@ public class MainActivity extends Activity {
         }
         webView.addJavascriptInterface(new Object() {
             @JavascriptInterface public String getRole(){ return BuildConfig.APP_ROLE; }
+            @JavascriptInterface public void copyText(String value){
+                if(value==null||value.length()>96)return;
+                runOnUiThread(()->{
+                    ClipboardManager clipboard=(ClipboardManager)getSystemService(Context.CLIPBOARD_SERVICE);
+                    clipboard.setPrimaryClip(ClipData.newPlainText("DG POS business code",value));
+                });
+            }
             @JavascriptInterface public void setSession(String token,String role){
                 if(!roleMatches(role) || token==null || token.length()>5000)return;
                 NotificationHelper.saveToken(MainActivity.this,token);
@@ -118,10 +127,15 @@ public class MainActivity extends Activity {
           :"worker".equals(role);
     }
     @Override public void onBackPressed(){
-        if(webView!=null && webView.canGoBack()) webView.goBack();
-        else new AlertDialog.Builder(this).setMessage("Close DG POS?")
-           .setNegativeButton("Stay",(d,w)->{})
-           .setPositiveButton("Exit",(d,w)->finish()).show();
+        if(webView==null)return;
+        // DG POS is a JavaScript single-page application: WebView.canGoBack() misses its
+        // internal page changes. JS handles navigation history, modals, stocktakes and business details.
+        // Hardware Back NEVER exits the app. Users intentionally sign out via Exit.
+        webView.evaluateJavascript("(function(){try{return !!window.DGPosBack && window.DGPosBack()}catch(e){return false}})()", result -> {
+            if(!"true".equals(result)) {
+                Toast.makeText(MainActivity.this, "Already on the main screen",Toast.LENGTH_SHORT).show();
+            }
+        });
     }
     @Override protected void onResume(){ super.onResume(); if(webView!=null) {webView.onResume(); NotificationHelper.runNow(this);} }
     @Override protected void onPause(){ if(webView!=null)webView.onPause();super.onPause(); }

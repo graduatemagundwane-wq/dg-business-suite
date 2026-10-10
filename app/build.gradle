@@ -8,8 +8,8 @@ android {
         applicationId 'zw.co.doublegeetech.dgpos'
         minSdk 26
         targetSdk 34
-        versionCode 5
-        versionName '0.3.5'
+        versionCode 6
+        versionName '0.3.6'
     }
     flavorDimensions 'role'
     productFlavors {

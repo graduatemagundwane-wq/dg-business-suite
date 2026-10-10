@@ -1,0 +1,41 @@
+plugins { id 'com.android.application' }
+
+android {
+    namespace 'zw.co.doublegeetech.dgpos'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'zw.co.doublegeetech.dgpos'
+        minSdk 26
+        targetSdk 34
+        versionCode 4
+        versionName '0.3.4'
+    }
+    flavorDimensions 'role'
+    productFlavors {
+        admin {
+            dimension 'role'
+            applicationIdSuffix '.admin'
+            resValue 'string', 'app_name', 'DG Control'
+            buildConfigField 'String', 'ENTRY_URL', '"https://dg-pos-business.vercel.app/?app=dg-control"'
+        }
+        owner {
+            dimension 'role'
+            applicationIdSuffix '.owner'
+            resValue 'string', 'app_name', 'DG Owner POS'
+            buildConfigField 'String', 'ENTRY_URL', '"https://dg-pos-business.vercel.app/?app=owner"'
+        }
+        worker {
+            dimension 'role'
+            applicationIdSuffix '.worker'
+            resValue 'string', 'app_name', 'DG Worker POS'
+            buildConfigField 'String', 'ENTRY_URL', '"https://dg-pos-business.vercel.app/?app=worker"'
+        }
+    }
+    buildFeatures { buildConfig true }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    packaging { resources { excludes += ["/META-INF/{AL2.0,LGPL2.1}"] } }
+}

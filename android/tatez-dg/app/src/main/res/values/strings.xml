@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Tatez-DG app</string>
+    <string name="reload">Try again</string>
+    <string name="connection_issue">Unable to connect to TATEZ</string>
+    <string name="check_data">Please check your internet connection and try again. Your login and applications remain on the secure TATEZ servers.</string>
+</resources>

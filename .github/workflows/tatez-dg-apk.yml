@@ -1,0 +1,110 @@
+name: Build Tatez-DG Android APK
+
+on:
+  push:
+    branches:
+      - build/tatez-dg-owner-apk
+    paths:
+      - 'android/tatez-dg/app/**'
+      - 'android/tatez-dg/build.gradle'
+      - 'android/tatez-dg/settings.gradle'
+      - 'android/tatez-dg/gradle.properties'
+      - '.github/workflows/tatez-dg-apk.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Check out the TATEZ build branch
+        uses: actions/checkout@v4
+        with:
+          ref: build/tatez-dg-owner-apk
+
+      - name: Configure Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Configure Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+
+      - name: Prepare Android SDK
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Install image preparation tooling
+        run: python3 -m pip install --quiet --break-system-packages Pillow
+
+      - name: Use the official TATEZ Investments logo
+        shell: bash
+        run: |
+          curl --location --fail --silent --show-error --retry 3 \
+            'https://tatez-smart-apply.vercel.app/assets/tatez-logo.jpg' \
+            --output /tmp/tatez-brand.jpg
+          python3 - <<'PY'
+          from pathlib import Path
+          from PIL import Image
+          root=Path("android/tatez-dg/app/src/main/res")
+          logo=Image.open("/tmp/tatez-brand.jpg").convert("RGB")
+          assert logo.width>=500 and logo.height>=500, "Original TATEZ logo could not be loaded."
+          densities={"mdpi":48,"hdpi":72,"xhdpi":96,"xxhdpi":144,"xxxhdpi":192}
+          for density,side in densities.items():
+              directory=root/("mipmap-"+density)
+              directory.mkdir(parents=True,exist_ok=True)
+              logo.resize((side,side),Image.Resampling.LANCZOS).save(directory/"ic_launcher.png",optimize=True)
+              # Adaptive Android icons require padding so the full TATEZ logo remains visible.
+              canvas=Image.new("RGBA",(side*3,side*3),(255,255,255,0))
+              thumb=logo.resize((side*2,side*2),Image.Resampling.LANCZOS)
+              canvas.paste(thumb,(side//2,side//2))
+              foreground=root/("drawable-"+density)
+              foreground.mkdir(parents=True,exist_ok=True)
+              canvas.save(foreground/"tatez_foreground.png",optimize=True)
+          adaptive=root/"mipmap-anydpi-v26"
+          adaptive.mkdir(parents=True,exist_ok=True)
+          (adaptive/"ic_launcher.xml").write_text(
+              '<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">'
+              '<background android:drawable="@android:color/white"/>'
+              '<foreground android:drawable="@drawable/tatez_foreground"/>'
+              '</adaptive-icon>',encoding="utf-8")
+          print("Original TATEZ logo applied to launcher icons.")
+          PY
+
+      - name: Build installable APK
+        run: gradle --no-daemon -p android/tatez-dg :app:assembleDebug --stacktrace
+
+      - name: Validate APK
+        shell: bash
+        run: |
+          APK=android/tatez-dg/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -E "(package:|application-label:|sdkVersion:|targetSdkVersion:)"
+          unzip -t "$APK" >/dev/null
+          echo "Verified Android package with TATEZ branding."
+
+      - name: Publish installable APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tatez-DG-app-APK
+          path: android/tatez-dg/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Commit direct-download APK to isolated build branch
+        shell: bash
+        run: |
+          mkdir -p android/tatez-dg/dist
+          cp android/tatez-dg/app/build/outputs/apk/debug/app-debug.apk android/tatez-dg/dist/Tatez-DG-app.apk
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f android/tatez-dg/dist/Tatez-DG-app.apk
+          git commit -m "Build Tatez-DG app Android installation package [skip ci]" || true
+          git push origin HEAD:build/tatez-dg-owner-apk

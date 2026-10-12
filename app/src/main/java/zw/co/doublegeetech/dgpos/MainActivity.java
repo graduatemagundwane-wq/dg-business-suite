@@ -50,12 +50,33 @@ public class MainActivity extends Activity {
         }
         webView.addJavascriptInterface(new Object() {
             @JavascriptInterface public String getRole(){ return BuildConfig.APP_ROLE; }
+            @JavascriptInterface public String getDeviceId(){
+                android.content.SharedPreferences p=getSharedPreferences("dgpos_identity_v1",Context.MODE_PRIVATE);
+                String id=p.getString("device_id","");
+                if(id.isEmpty()){
+                    id=java.util.UUID.randomUUID().toString();
+                    p.edit().putString("device_id",id).commit();
+                }
+                return id;
+            }
+            @JavascriptInterface public void rememberDeviceId(String id){
+                if(id!=null && id.matches("[a-fA-F0-9\\-]{36}"))
+                    getSharedPreferences("dgpos_identity_v1",Context.MODE_PRIVATE).edit().putString("device_id",id).apply();
+            }
             @JavascriptInterface public void copyText(String value){
                 if(value==null||value.length()>96)return;
                 runOnUiThread(()->{
                     ClipboardManager clipboard=(ClipboardManager)getSystemService(Context.CLIPBOARD_SERVICE);
                     clipboard.setPrimaryClip(ClipData.newPlainText("DG POS business code",value));
                 });
+            }
+            @JavascriptInterface public String getAppSession(){return NotificationHelper.getAppSession(MainActivity.this);}
+            @JavascriptInterface public void saveAppSession(String json){
+                if(json==null||json.length()>12000)return;
+                try {
+                    String role=new org.json.JSONObject(json).optString("role","");
+                    if(roleMatches(role))NotificationHelper.saveAppSession(MainActivity.this,json);
+                }catch(Exception ignored){}
             }
             @JavascriptInterface public void setSession(String token,String role){
                 if(!roleMatches(role) || token==null || token.length()>5000)return;
@@ -137,7 +158,10 @@ public class MainActivity extends Activity {
             }
         });
     }
-    @Override protected void onResume(){ super.onResume(); if(webView!=null) {webView.onResume(); NotificationHelper.runNow(this);} }
+    @Override protected void onResume(){ super.onResume(); if(webView!=null) {
+        webView.onResume(); NotificationHelper.runNow(this);
+        webView.evaluateJavascript("if(window.DGPosResume){window.DGPosResume()}", null);
+    } }
     @Override protected void onPause(){ if(webView!=null)webView.onPause();super.onPause(); }
     @Override protected void onDestroy(){
         if(webView!=null){webView.destroy();webView=null;}

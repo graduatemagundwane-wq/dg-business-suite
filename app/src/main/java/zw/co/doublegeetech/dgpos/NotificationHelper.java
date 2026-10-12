@@ -61,6 +61,28 @@ public final class NotificationHelper {
     Cipher cipher=Cipher.getInstance("AES/GCM/NoPadding");cipher.init(Cipher.DECRYPT_MODE,key(),new GCMParameterSpec(128,Base64.decode(iv,Base64.NO_WRAP)));
     return new String(cipher.doFinal(Base64.decode(raw,Base64.NO_WRAP)),"UTF-8");
   }catch(Exception e){return null;} }
+
+  static void saveAppSession(Context c,String json){
+    if(json==null||json.length()>12000)return;
+    try {
+      byte[] iv=new byte[12];new SecureRandom().nextBytes(iv);
+      Cipher cipher=Cipher.getInstance("AES/GCM/NoPadding");
+      cipher.init(Cipher.ENCRYPT_MODE,key(),new GCMParameterSpec(128,iv));
+      String enc=Base64.encodeToString(cipher.doFinal(json.getBytes("UTF-8")),Base64.NO_WRAP);
+      prefs(c).edit().putString("app_session",enc)
+        .putString("app_session_iv",Base64.encodeToString(iv,Base64.NO_WRAP)).apply();
+    }catch(Exception ignored){}
+  }
+  static String getAppSession(Context c){
+    try {
+      String raw=prefs(c).getString("app_session",null),iv=prefs(c).getString("app_session_iv",null);
+      if(raw==null||iv==null)return "";
+      Cipher cipher=Cipher.getInstance("AES/GCM/NoPadding");
+      cipher.init(Cipher.DECRYPT_MODE,key(),
+        new GCMParameterSpec(128,Base64.decode(iv,Base64.NO_WRAP)));
+      return new String(cipher.doFinal(Base64.decode(raw,Base64.NO_WRAP)),"UTF-8");
+    }catch(Exception ignored){return "";}
+  }
   static void clearSession(Context c){prefs(c).edit().clear().apply();WorkManager.getInstance(c).cancelUniqueWork(POLL);}
   static void schedule(Context c){
     Constraints constraints=new Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build();

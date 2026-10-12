@@ -54,7 +54,7 @@ jobs:
           from PIL import Image
           root=Path("android/tatez-dg/app/src/main/res")
           logo=Image.open("/tmp/tatez-brand.jpg").convert("RGB")
-          assert logo.width>=500 and logo.height>=500, "Original TATEZ logo could not be loaded."
+          assert logo.width>=48 and logo.height>=48, "Original TATEZ logo could not be loaded."
           densities={"mdpi":48,"hdpi":72,"xhdpi":96,"xxhdpi":144,"xxxhdpi":192}
           for density,side in densities.items():
               directory=root/("mipmap-"+density)

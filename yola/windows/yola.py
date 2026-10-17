@@ -43,11 +43,11 @@ def premium_injection_script():
         raise RuntimeError("Bundled Yola premium styles are invalid")
     return (
         "(function(){"
-        "if(location.hostname!==\\\"yola-onboarding.vercel.app\\\"||location.pathname!==\\\"/workspace.html\\\")return \\\"not-workspace\\\";"
+        "if(location.hostname!=='yola-onboarding.vercel.app'||location.pathname!=='/workspace.html')return 'not-workspace';"
         "var el=document.getElementById('yola-native-premium-style');"
         "if(!el){el=document.createElement('style');el.id='yola-native-premium-style';document.head.appendChild(el);}"
-        "el.textContent=" + json.dumps(css,ensure_ascii=True) + ";"
-        "return \\\"premium-style-applied\\\";"
+        "el.textContent=" + json.dumps(css, ensure_ascii=True) + ";"
+        "return 'premium-style-applied';"
         "})()"
     )
 
@@ -151,7 +151,11 @@ def main():
     parser=argparse.ArgumentParser()
     parser.add_argument("--self-test",action="store_true")
     parser.add_argument("--check-live",action="store_true")
+    parser.add_argument("--dump-style-js",action="store_true")
     args=parser.parse_args()
+    if args.dump_style_js:
+        print(premium_injection_script())
+        return 0
     if args.self_test: return run_selftest(live=args.check_live)
     if args.check_live: return run_selftest(live=True)
     return start_window()

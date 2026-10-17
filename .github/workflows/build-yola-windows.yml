@@ -30,6 +30,8 @@ jobs:
           python yola/windows/brand_icon.py
           python -m py_compile yola/windows/yola.py
           python yola/windows/yola.py --self-test
+          python yola/windows/yola.py --dump-style-js | Out-File -Encoding utf8 "yola/windows/style-inject-check.js"
+          node --check "yola/windows/style-inject-check.js"
       - name: Verify real Yola / Master Control health
         shell: pwsh
         run: |

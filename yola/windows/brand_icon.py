@@ -2,6 +2,17 @@
 from pathlib import Path
 from PIL import Image,ImageDraw
 out=Path(__file__).resolve().parent
+# Prefer the official Yola icon provided by the product owner.
+brand_file=out/"brand.webp.b64"
+if brand_file.exists():
+    import base64
+    from io import BytesIO
+    actual=Image.open(BytesIO(base64.b64decode(brand_file.read_text().strip()))).convert("RGBA")
+    actual=actual.resize((256,256),Image.Resampling.LANCZOS)
+    actual.save(out/"yola.png")
+    actual.save(out/"yola.ico",sizes=[(16,16),(24,24),(32,32),(48,48),(64,64),(128,128),(256,256)])
+    print("Branded Windows icon generated from official Yola artwork")
+    raise SystemExit(0)
 im=Image.new("RGBA",(256,256),(0,0,0,0))
 d=ImageDraw.Draw(im)
 for y in range(16,240):

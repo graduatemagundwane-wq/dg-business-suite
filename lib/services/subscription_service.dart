@@ -33,8 +33,7 @@ class SubscriptionStatus {
   bool get allowsBusinessAccess {
     return state == SubscriptionState.trial ||
         state == SubscriptionState.active ||
-        state == SubscriptionState.offlineGrace ||
-        plan == SubscriptionPlan.lifetime;
+        state == SubscriptionState.offlineGrace;
   }
 }
 
@@ -47,10 +46,8 @@ class SubscriptionService {
 
   SubscriptionStatus _status = SubscriptionStatus(
     plan: SubscriptionPlan.trial,
-    state: SubscriptionState.trial,
-    expiresAt: DateTime.now().add(const Duration(days: 14)),
-    renewalAt: DateTime.now().add(const Duration(days: 14)),
-    offlineGraceDaysRemaining: 7,
+    // A new installation is not entitled to a trial until master approval.
+    state: SubscriptionState.suspended,
   );
 
   SubscriptionStatus get currentStatus => _status;
@@ -58,7 +55,7 @@ class SubscriptionService {
   SubscriptionStatus resolveFromActivation(ActivationStatus activationStatus) {
     final state = switch (activationStatus) {
       ActivationStatus.activated => SubscriptionState.active,
-      ActivationStatus.pending => SubscriptionState.trial,
+      ActivationStatus.pending => SubscriptionState.suspended,
       ActivationStatus.suspended => SubscriptionState.suspended,
       ActivationStatus.expired => SubscriptionState.expired,
       ActivationStatus.offlineGrace => SubscriptionState.offlineGrace,
@@ -86,10 +83,11 @@ class SubscriptionService {
 
     _status = SubscriptionStatus(
       plan: plan,
-      state: SubscriptionState.active,
+      // This requests a plan; only the server may activate the entitlement.
+      state: SubscriptionState.suspended,
       expiresAt: expiresAt,
       renewalAt: expiresAt,
-      offlineGraceDaysRemaining: 7,
+      offlineGraceDaysRemaining: 0,
     );
 
     return _status;

@@ -49,13 +49,27 @@ jobs:
           print('Official Yola icon generated.')
           '@ | Set-Content -Encoding UTF8 .\.generate-brand.py
           python .\.generate-brand.py
-      - name: Validate local source, no insecure license bypass
+      - name: Validate local source (fixture cloud, production pins restored)
         shell: pwsh
         run: |
-          python -m py_compile desktop/local_server.py desktop/desktop_app.py cloud/cloud_server.py
-          python tests/master_control_test.py
-          python tests/acceptance_test.py
-          python desktop/desktop_app.py --self-test
+          # Source QA connects to a disposable simulated cloud; customer builds
+          # must retain their immutable signed production endpoint and public key.
+          Move-Item desktop/cloud_url.txt desktop/cloud_url.production.qa-hold
+          Move-Item desktop/license_public_key.b64 desktop/license_public_key.production.qa-hold
+          try {
+            python -m py_compile desktop/local_server.py desktop/desktop_app.py cloud/cloud_server.py
+            if ($LASTEXITCODE -ne 0) { throw 'Python compilation failed' }
+            python tests/master_control_test.py
+            if ($LASTEXITCODE -ne 0) { throw 'Master Control security tests failed' }
+            python tests/acceptance_test.py
+            if ($LASTEXITCODE -ne 0) { throw 'Yola 34-section acceptance suite failed' }
+            python desktop/desktop_app.py --self-test
+            if ($LASTEXITCODE -ne 0) { throw 'Native desktop self-test failed' }
+          } finally {
+            Move-Item desktop/cloud_url.production.qa-hold desktop/cloud_url.txt
+            Move-Item desktop/license_public_key.production.qa-hold desktop/license_public_key.b64
+          }
+          if (-not (Test-Path desktop/cloud_url.txt) -or -not (Test-Path desktop/license_public_key.b64)) { throw 'The production licence pins were not restored' }
       - name: Build single EXE — true local SQLite app
         shell: pwsh
         run: |

@@ -17,6 +17,9 @@ class AuthRepository {
     String identifier, {
     String password = '',
   }) async {
+    if (password.isEmpty) {
+      throw StateError('Business owner password is required.');
+    }
     await _tryRemoteLogin(
       role: 'business_owner',
       identifier: identifier.trim(),
@@ -29,6 +32,9 @@ class AuthRepository {
     String identifier, {
     String password = '',
   }) async {
+    if (password.isEmpty) {
+      throw StateError('Employee password is required.');
+    }
     await _tryRemoteLogin(
       role: 'employee',
       identifier: identifier.trim(),
@@ -277,7 +283,9 @@ class AuthRepository {
       );
       await ApiAuthService.instance.currentUser();
     } on ApiException catch (error) {
-      if (error.canUseOfflineMode) return;
+      // No offline business login until we can validate a signed license
+      // lease and previously authenticated user/device credentials.
+      if (error.canUseOfflineMode && role == 'customer') return;
       throw StateError(error.friendlyMessage);
     }
   }

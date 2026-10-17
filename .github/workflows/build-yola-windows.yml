@@ -43,8 +43,9 @@ jobs:
             --collect-all webview `
             --hidden-import win32print `
             --add-data "yola/windows/yola.png;." `
+            --add-data "yola/windows/premium.css;." `
             yola/windows/yola.py
-      - name: Test the actual packaged EXE
+      - name: Test the actual packaged EXE and bundled premium style
         shell: pwsh
         run: |
           $exe = Join-Path $PWD "dist/Yola-Powered-by-Double-Gee-Tech.exe"
@@ -63,5 +64,6 @@ jobs:
             dist/SHA256.txt
             yola/windows/yola.ico
             yola/windows/yola.png
+            yola/windows/premium.css
           if-no-files-found: error
           retention-days: 30

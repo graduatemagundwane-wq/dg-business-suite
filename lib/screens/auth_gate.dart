@@ -280,7 +280,7 @@ class _ProductionAuthScreenState extends State<ProductionAuthScreen> {
           password: _loginPasswordController.text,
           role: _roleApiValue,
         );
-        _authRepository.applyRemoteSession(session, credentials);
+        await _authRepository.applyRemoteSession(session, credentials);
         return;
       }
 

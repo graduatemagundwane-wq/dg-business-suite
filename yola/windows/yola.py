@@ -4,6 +4,7 @@ This app deliberately does not contain database credentials or licensing secrets
 Business registration and activation are enforced by the hosted Yola API, backed
 by the existing DG Tech Master Control. Offline transactions are NOT enabled.
 """
+from pathlib import Path
 import argparse
 import json
 import os
@@ -27,6 +28,29 @@ def live_health(timeout=8):
         if not (payload.get("ok") and payload.get("licensingAuthority") == "DG Tech Master Control" and payload.get("productIntegration") == "connected"):
             raise RuntimeError("The Yola server has not verified its Master Control integration.")
         return payload
+
+def premium_style_path():
+    """Look inside PyInstaller's read-only bundle or beside the source in dev."""
+    if hasattr(sys, "_MEIPASS"):
+        return Path(sys._MEIPASS) / "premium.css"
+    return Path(__file__).resolve().parent / "premium.css"
+
+
+def premium_injection_script():
+    """Apply visual-only styling to Yola workspace; never touch auth state."""
+    css = premium_style_path().read_text(encoding="utf-8")
+    if ".logo-emblem img" not in css or ".sidebar" not in css:
+        raise RuntimeError("Bundled Yola premium styles are invalid")
+    return (
+        "(function(){"
+        "if(location.hostname!==\\\"yola-onboarding.vercel.app\\\"||location.pathname!==\\\"/workspace.html\\\")return \\\"not-workspace\\\";"
+        "var el=document.getElementById('yola-native-premium-style');"
+        "if(!el){el=document.createElement('style');el.id='yola-native-premium-style';document.head.appendChild(el);}"
+        "el.textContent=" + json.dumps(css,ensure_ascii=True) + ";"
+        "return \\\"premium-style-applied\\\";"
+        "})()"
+    )
+
 
 def offline_html(reason="Cannot reach Yola"):
     # Static, self-contained recovery screen; don't interpolate network messages.
@@ -84,6 +108,10 @@ def run_selftest(live=False):
     assert "DG Tech Master Control" in APP_NAME or APP_NAME.endswith("Double Gee Tech")
     html=offline_html()
     assert "Retry connection" in html
+    script = premium_injection_script()
+    assert "yola-native-premium-style" in script
+    assert "premium-style-applied" in script
+    assert "workspace.html" in script
     if live: live_health()
     print("PASS YOLA WINDOWS SELF-TEST" + (" + LIVE MASTER CONTROL HEALTH" if live else ""))
     return 0
@@ -94,6 +122,16 @@ def start_window():
     WINDOW = webview.create_window(APP_NAME, html="""<html><head><meta charset='utf-8'></head><body style='font:19px Segoe UI;background:#f8fafc;color:#18324f;display:grid;place-items:center;height:100vh;margin:0'><div style='text-align:center'><h1>Yola</h1><p>Connecting securely to your business...</p></div></body></html>""",
         js_api=NativeBridge(), width=1440, height=900, min_size=(930, 620), background_color="#f6f8fb",
         confirm_close=False, text_select=False)
+    def on_loaded(*_args):
+        # The server CSS may be missing. Restore the premium layout from a
+        # verified, bundled resource after each page navigation.
+        try:
+            WINDOW.evaluate_js(premium_injection_script())
+        except Exception as exc:
+            print(f"Yola premium layout could not be applied: {exc}", file=sys.stderr)
+
+    WINDOW.events.loaded += on_loaded
+
     def initialize():
         try:
             live_health(timeout=12)

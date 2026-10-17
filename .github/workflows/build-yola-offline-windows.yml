@@ -1,0 +1,93 @@
+name: Yola Offline Premium Windows Candidate
+on:
+  push:
+    branches: [build/yola-offline-premium]
+    paths:
+      - 'yola/offline/**'
+      - '.github/workflows/build-yola-offline-windows.yml'
+      - 'yola/windows/brand.webp.b64'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-candidate:
+    runs-on: windows-latest
+    timeout-minutes: 50
+    defaults:
+      run:
+        working-directory: yola/offline
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install desktop dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-build.txt
+          python -m pip install pillow==11.3.0
+      - name: Generate official Yola branding for packaged UI
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+          from PIL import Image
+          import base64,io
+          root=Path.cwd()
+          b64=(root/'../../yola/windows/brand.webp.b64').resolve().read_text().strip()
+          artwork=Image.open(io.BytesIO(base64.b64decode(b64))).convert('RGBA')
+          icon=artwork.resize((256,256),Image.Resampling.LANCZOS)
+          assets=root/'desktop/static'
+          assets.mkdir(parents=True,exist_ok=True)
+          for name in ('yola-brand.png','yola-icon.png','dg-logo-mark.png','dg-app-icon.png'):
+              icon.save(assets/name)
+          icon.save(assets/'yola.ico',sizes=[(16,16),(24,24),(32,32),(48,48),(64,64),(128,128),(256,256)])
+          assert (assets/'index.html').exists()
+          print('Official Yola icon generated.')
+          '@ | Set-Content -Encoding UTF8 .\.generate-brand.py
+          python .\.generate-brand.py
+      - name: Validate local source, no insecure license bypass
+        shell: pwsh
+        run: |
+          python -m py_compile desktop/local_server.py desktop/desktop_app.py cloud/cloud_server.py
+          python tests/master_control_test.py
+          python tests/acceptance_test.py
+          python desktop/desktop_app.py --self-test
+      - name: Build single EXE — true local SQLite app
+        shell: pwsh
+        run: |
+          python -m PyInstaller --noconfirm --clean --windowed --onefile `
+            --name "Yola-Offline-Powered-by-Double-Gee-Tech-CANDIDATE" `
+            --icon "desktop/static/yola.ico" `
+            --paths "desktop" `
+            --add-data "desktop/static;static" `
+            --add-data "VERSION;." `
+            --add-data "desktop/license_public_key.b64;." `
+            --add-data "desktop/cloud_url.txt;." `
+            --collect-all webview `
+            --collect-all uvicorn `
+            --hidden-import win32print `
+            desktop/desktop_app.py
+      - name: Test actual packaged Windows executable
+        shell: pwsh
+        run: |
+          $exe=(Resolve-Path "dist/Yola-Offline-Powered-by-Double-Gee-Tech-CANDIDATE.exe").Path
+          $log=Join-Path $env:TEMP "dg_pos_self_test.log"
+          Remove-Item $log -Force -ErrorAction SilentlyContinue
+          $proc=Start-Process -FilePath $exe -ArgumentList '--self-test' -Wait -PassThru
+          if ($proc.ExitCode -ne 0) { throw "Packaged EXE failed self-test with exit code $($proc.ExitCode)" }
+          if (-not (Test-Path $log) -or (Get-Content $log -Raw).Trim() -ne 'PASS') { throw 'Packaged EXE did not report local-server PASS' }
+          Get-FileHash $exe -Algorithm SHA256 | Format-List | Out-File -Encoding ascii dist/SHA256.txt
+          Write-Output 'PASS: packaged EXE startup, FastAPI local server and embedded UI'
+      - name: Upload **candidate only** (not a client release)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Yola-Offline-Premium-Windows-CANDIDATE
+          path: |
+            yola/offline/dist/*.exe
+            yola/offline/dist/SHA256.txt
+          retention-days: 30
+          if-no-files-found: error

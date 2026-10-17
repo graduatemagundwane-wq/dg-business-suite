@@ -28,12 +28,15 @@ extension ActivationStatusLabel on ActivationStatus {
     }
   }
 
-  bool get allowsBusinessAccess {
-    return this == ActivationStatus.activated ||
-        this == ActivationStatus.offlineGrace;
-  }
+  bool get allowsBusinessAccess =>
+      this == ActivationStatus.activated || this == ActivationStatus.offlineGrace;
 }
 
+/// The client can request activation but cannot grant it.
+///
+/// The backend must check that the shop belongs to this authenticated user,
+/// that the license was approved by DG Tech Master Control, and that its
+/// validity/device limits are satisfied. Never trust a local activation code.
 class ActivationService {
   static final ActivationService instance = ActivationService._internal();
 
@@ -41,70 +44,79 @@ class ActivationService {
 
   ActivationService._internal();
 
-  final Random _random = Random();
+  final Random _random = Random.secure();
 
   String generateShopCode() {
-    final number = (_random.nextInt(9000) + 1000);
-
-    return "DG-SHOP-$number";
-  }
-
-  String generateActivationCode() {
+    // Registration identifiers are not credentials and grant no privileges.
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-
-    String code = '';
-
-    for (int i = 0; i < 8; i++) {
-      code += chars[_random.nextInt(chars.length)];
-    }
-
-    return "ACT-$code";
+    final code = List.generate(
+      12,
+      (_) => chars[_random.nextInt(chars.length)],
+    ).join();
+    return 'DG-SHOP-$code';
   }
 
   String generateEmployeeCode() {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    final code = List.generate(
+      8,
+      (_) => chars[_random.nextInt(chars.length)],
+    ).join();
+    return 'DG-EMP-$code';
+  }
 
-    String code = '';
+  /// Accept only an explicit, structured server status. Substring matching
+  /// such as "inactive".contains("active") would grant unauthorized access.
+  static ActivationStatus statusFromPayload(Map<String, dynamic> payload) {
+    final nested = payload['data'];
+    final data = nested is Map<String, dynamic> ? nested : payload;
+    final status = (data['activation_status'] ?? data['status'])
+        ?.toString()
+        .trim()
+        .toLowerCase();
 
-    for (int i = 0; i < 5; i++) {
-      code += chars[_random.nextInt(chars.length)];
+    switch (status) {
+      case 'active':
+      case 'activated':
+        return ActivationStatus.activated;
+      case 'suspended':
+      case 'revoked':
+      case 'frozen':
+        return ActivationStatus.suspended;
+      case 'expired':
+        return ActivationStatus.expired;
+      case 'pending':
+      case 'inactive':
+      case 'unapproved':
+      case 'trial_requested':
+        return ActivationStatus.pending;
     }
 
-    return "DG-EMP-$code";
+    // A typed boolean is accepted only when the service explicitly says so.
+    if (data['activated'] == true) return ActivationStatus.activated;
+    return ActivationStatus.pending;
   }
 
   Future<ActivationStatus> checkRemoteActivation({
     required String shopCode,
     required bool locallyActivated,
   }) async {
+    if (shopCode.trim().isEmpty) return ActivationStatus.pending;
     try {
       final response = await DoubleGeeApiService.instance.get(
         ApiConfig.activationStatus(shopCode),
       );
-      final body = response.data.toString().toLowerCase();
-
-      if (body.contains('suspended')) {
-        await _cacheActivation(shopCode: shopCode, activated: false);
-        return ActivationStatus.suspended;
-      }
-
-      if (body.contains('expired')) {
-        await _cacheActivation(shopCode: shopCode, activated: false);
-        return ActivationStatus.expired;
-      }
-
-      if (body.contains('activated') || body.contains('active')) {
-        await _cacheActivation(shopCode: shopCode, activated: true);
-        return ActivationStatus.activated;
-      }
-
-      await _cacheActivation(shopCode: shopCode, activated: false);
+      final status = statusFromPayload(response.data);
+      await _cacheActivation(
+        shopCode: shopCode,
+        activated: status == ActivationStatus.activated,
+      );
+      return status;
+    } on ApiException {
+      // A locally edited SQLite flag is NOT a license. Offline access will
+      // be enabled only after the master issues a cryptographically signed,
+      // time-limited license lease and the app verifies it.
       return ActivationStatus.pending;
-    } on ApiException catch (error) {
-      if (!error.canUseOfflineMode) return ActivationStatus.pending;
-      return locallyActivated
-          ? ActivationStatus.offlineGrace
-          : ActivationStatus.pending;
     }
   }
 
@@ -112,34 +124,28 @@ class ActivationService {
     required String shopCode,
     required String activationCode,
   }) async {
+    if (shopCode.trim().isEmpty || activationCode.trim().isEmpty) {
+      return ActivationStatus.pending;
+    }
+
     try {
       final response = await DoubleGeeApiService.instance.post(
         ApiConfig.activationVerify,
         {
-          'shop_code': shopCode,
-          'activation_code': activationCode,
+          'shop_code': shopCode.trim(),
+          'activation_code': activationCode.trim(),
         },
       );
-      final body = response.data.toString().toLowerCase();
-
-      if (body.contains('activated') || body.contains('active')) {
-        await _cacheActivation(shopCode: shopCode, activated: true);
-        return ActivationStatus.activated;
-      }
-
-      if (body.contains('suspended')) return ActivationStatus.suspended;
-      if (body.contains('expired')) return ActivationStatus.expired;
-    } on ApiException catch (error) {
-      if (!error.canUseOfflineMode) return ActivationStatus.pending;
-      final local = await _verifyLocalActivationCode(
+      final status = statusFromPayload(response.data);
+      await _cacheActivation(
         shopCode: shopCode,
-        activationCode: activationCode,
+        activated: status == ActivationStatus.activated,
       );
-
-      if (local) return ActivationStatus.offlineGrace;
+      return status;
+    } on ApiException {
+      // Never fall back to comparing an activation code in the local database.
+      return ActivationStatus.pending;
     }
-
-    return ActivationStatus.pending;
   }
 
   Future<void> _cacheActivation({
@@ -153,23 +159,5 @@ class ActivationService {
       where: 'shop_code = ?',
       whereArgs: [shopCode],
     );
-  }
-
-  Future<bool> _verifyLocalActivationCode({
-    required String shopCode,
-    required String activationCode,
-  }) async {
-    final db = await LocalDatabase.instance.database;
-    final result = await db.query(
-      'shops',
-      where: 'shop_code = ? AND activation_code = ?',
-      whereArgs: [shopCode, activationCode],
-      limit: 1,
-    );
-
-    if (result.isEmpty) return false;
-
-    await _cacheActivation(shopCode: shopCode, activated: true);
-    return true;
   }
 }

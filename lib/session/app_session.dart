@@ -66,8 +66,8 @@ class AppSession extends ChangeNotifier {
       employeeId: 1,
       displayName: 'Owner',
       shopName: 'Double Gee POS',
-      shopActivated: true,
-      activationStatus: ActivationStatus.activated,
+      shopActivated: false,
+      activationStatus: ActivationStatus.pending,
     );
   }
 

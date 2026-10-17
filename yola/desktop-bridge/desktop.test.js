@@ -1,0 +1,13 @@
+'use strict';
+const assert=require('node:assert/strict');
+const crypto=require('node:crypto');
+const {privateKey}=crypto.generateKeyPairSync('ed25519');
+process.env.YOLA_DESKTOP_PKCS8_B64=privateKey.export({format:'der',type:'pkcs8'}).toString('base64');
+const d=require('./desktop.js');
+const good={kind:'yola-device-license',device_id:'a'.repeat(48),business_id:'YOLA-TEST',master_installation_id:'fixture',valid_until:new Date(Date.now()+3600_000).toISOString()};
+const token=d.__test.signed(good);assert.deepEqual(d.__test.decoded(token),good);
+assert.throws(()=>d.__test.decoded(token+'-tampered'));
+assert.equal(d.__test.validDevice('a'.repeat(48)),true);
+assert.equal(d.__test.validDevice('not-device'),false);
+assert.match(d.__test.getPublic(),/^[A-Za-z0-9+/]{43}=$/);
+console.log('PASS: Yola signed device token + anti-tampering (fixture key)');

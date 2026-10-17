@@ -159,11 +159,16 @@ class AuthRepository {
     final credentials = await ApiAuthService.instance.restoreSession();
     if (credentials == null) return false;
 
-    applyRemoteSession(session, credentials);
+    await applyRemoteSession(session, credentials);
     return true;
   }
 
-  void applyRemoteSession(AppSession session, ApiCredentials credentials) {
+  /// An authenticated login is NOT proof of an activated DG POS license.
+  /// Every business role must receive an explicit, authoritative status.
+  Future<void> applyRemoteSession(
+    AppSession session,
+    ApiCredentials credentials,
+  ) async {
     final role = credentials.role;
     final user = credentials.user;
     final displayName = _readString(user, [
@@ -172,7 +177,7 @@ class AuthRepository {
           'customer_name',
           'employee_name',
         ]) ??
-        'Yola User';
+        'DG POS User';
     final businessId = credentials.businessId ??
         _readString(user, ['business_id', 'shop_id', 'company_id']);
     final parsedBusinessId = int.tryParse(businessId ?? '') ?? 1;
@@ -183,26 +188,33 @@ class AuthRepository {
         customerId: parsedUserId,
         customerName: displayName,
       );
-    } else if (role == 'employee') {
+      return;
+    }
+
+    final shopCode = _readString(user, ['shop_code']) ?? businessId ?? '';
+    final activationStatus = await ActivationService.instance
+        .checkRemoteActivation(shopCode: shopCode, locallyActivated: false);
+
+    if (role == 'employee') {
       session.signInEmployee(
         shopId: parsedBusinessId,
         employeeId: parsedUserId,
         employeeName: displayName,
         shopName: _readString(user, ['business_name', 'shop_name']) ??
-            'Yola Business',
-        activated: true,
-        activationStatus: ActivationStatus.activated,
-        shopCode: businessId ?? '',
+            'DG POS Business',
+        activated: activationStatus.allowsBusinessAccess,
+        activationStatus: activationStatus,
+        shopCode: shopCode,
       );
     } else {
       session.signInOwner(
         shopId: parsedBusinessId,
         ownerName: displayName,
         shopName: _readString(user, ['business_name', 'shop_name']) ??
-            'Yola Business',
-        activated: true,
-        activationStatus: ActivationStatus.activated,
-        shopCode: businessId ?? '',
+            'DG POS Business',
+        activated: activationStatus.allowsBusinessAccess,
+        activationStatus: activationStatus,
+        shopCode: shopCode,
       );
     }
   }
@@ -229,12 +241,8 @@ class AuthRepository {
       activationCode: activationCode.trim(),
     );
 
-    if (remoteStatus.allowsBusinessAccess) return true;
-
-    return OwnerAuth.instance.activateShop(
-      shopCode: shopCode.trim(),
-      activationCode: activationCode.trim(),
-    );
+    // Only the activation service's authenticated server response can approve.
+    return remoteStatus == ActivationStatus.activated;
   }
 
   bool shopIsActivated(Map<String, dynamic>? shop) {

@@ -1,0 +1,5 @@
+-r requirements.txt
+pyinstaller>=6.15,<7
+pywin32>=311; platform_system == "Windows"
+
+httpx>=0.28,<1

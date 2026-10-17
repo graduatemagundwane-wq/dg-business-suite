@@ -997,7 +997,8 @@ def add_user(p:UserIn,user:dict=Depends(access("audit"))):
     if not p.pin or len(p.pin)<4: raise HTTPException(422,"Staff PIN must have at least 4 characters")
     with db() as c:
         count=c.execute("SELECT COUNT(*) FROM users WHERE active=1 AND role!='owner'").fetchone()[0]
-        if count >= master_staff_limit():            raise HTTPException(409,'DG Tech Master Control worker-account limit reached')
+        if count >= master_staff_limit():
+            raise HTTPException(409,'DG Tech Master Control worker-account limit reached')
         cur=c.execute("INSERT INTO users(name,role,pin_hash,permissions,active,created_at) VALUES(?,?,?,?,1,?)",(p.name.strip(),role,pin_hash(p.pin),json.dumps(perms),iso()))
         audit(c,"user.created",user,branch_id_from(),"user",cur.lastrowid,{"name":p.name,"role":role,"permissions":perms})
         return {"id":cur.lastrowid}
@@ -1996,7 +1997,8 @@ def backup_key() -> bytes:
         payload=token.split(".",1)[0]
         claims=json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
         stable_key=str(claims["backup_key"])
-        if claims.get("device_id")!=DEVICE_ID: raise ValueError("Device mismatch")    except Exception:
+        if claims.get("device_id")!=DEVICE_ID: raise ValueError("Device mismatch")
+    except Exception:
         raise HTTPException(423,"Signed business backup key is not available")
     raw=("DG-POS-BACKUP-v4|"+DEVICE_ID+"|"+stable_key).encode()
     return base64.urlsafe_b64encode(hashlib.sha256(raw).digest())

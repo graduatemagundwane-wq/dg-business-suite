@@ -1,0 +1,67 @@
+name: Build Yola Premium Windows EXE
+on:
+  push:
+    branches:
+      - build/yola-premium-windows
+    paths:
+      - 'yola/windows/**'
+      - '.github/workflows/build-yola-windows.yml'
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout Windows source
+        uses: actions/checkout@v4
+      - name: Python for PyInstaller
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install audited desktop dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "pywebview==5.4" "pyinstaller==6.16.0" "pillow==11.3.0" "pywin32>=308"
+      - name: Build branded assets and inspect source
+        shell: pwsh
+        run: |
+          python yola/windows/brand_icon.py
+          python -m py_compile yola/windows/yola.py
+          python yola/windows/yola.py --self-test
+      - name: Verify real Yola / Master Control health
+        shell: pwsh
+        run: |
+          python yola/windows/yola.py --check-live
+      - name: Package the customer Windows executable
+        shell: pwsh
+        run: |
+          python -m PyInstaller --onefile --windowed --noconfirm --clean `
+            --name "Yola-Powered-by-Double-Gee-Tech" `
+            --icon "yola/windows/yola.ico" `
+            --collect-all webview `
+            --hidden-import win32print `
+            --add-data "yola/windows/yola.png;." `
+            yola/windows/yola.py
+      - name: Test the actual packaged EXE
+        shell: pwsh
+        run: |
+          $exe = Join-Path $PWD "dist/Yola-Powered-by-Double-Gee-Tech.exe"
+          if (-not (Test-Path $exe)) { throw "Yola EXE was not created" }
+          $p = Start-Process -FilePath $exe -ArgumentList "--self-test" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "Packaged EXE self-test failed ($($p.ExitCode))" }
+          $p2 = Start-Process -FilePath $exe -ArgumentList "--check-live" -Wait -PassThru
+          if ($p2.ExitCode -ne 0) { throw "Packaged EXE live health failed ($($p2.ExitCode))" }
+          Get-FileHash $exe -Algorithm SHA256 | Out-File -Encoding ascii "dist/SHA256.txt"
+      - name: Deliver EXE and evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: Yola-Windows-Premium-EXE-Unsigned-Candidate
+          path: |
+            dist/Yola-Powered-by-Double-Gee-Tech.exe
+            dist/SHA256.txt
+            yola/windows/yola.ico
+            yola/windows/yola.png
+          if-no-files-found: error
+          retention-days: 30

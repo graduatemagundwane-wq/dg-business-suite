@@ -25,10 +25,6 @@ class OwnerAuth {
     await LocalDatabase.instance.ensureProductionIdentityColumns();
     final shopCode =
         ActivationService.instance.generateShopCode();
-
-    final activationCode =
-        ActivationService.instance.generateActivationCode();
-
     await LocalDatabase.instance.database.then(
       (db) async {
         await db.insert(
@@ -49,7 +45,7 @@ class OwnerAuth {
             'business_uid': _id('BIZ'),
             'activation_uid': _id('ACTIVATION'),
             'device_uid': _id('DEVICE'),
-            'activation_code': activationCode,
+            'activation_code': null, // Only the master may issue activation.
             'activated': 0,
             'created_at':
                 DateTime.now().toIso8601String(),
@@ -61,7 +57,6 @@ class OwnerAuth {
     return {
       'success': true,
       'shop_code': shopCode,
-      'activation_code': activationCode,
     };
   }
 
@@ -69,41 +64,11 @@ class OwnerAuth {
     return 'DG-$prefix-${DateTime.now().microsecondsSinceEpoch}';
   }
 
+  /// Legacy entry point retained for compatibility; local activation is forbidden.
   Future<bool> activateShop({
     required String shopCode,
     required String activationCode,
-  }) async {
-    final db =
-        await LocalDatabase.instance.database;
-
-    final result = await db.query(
-      'shops',
-      where:
-          'shop_code = ? AND activation_code = ?',
-      whereArgs: [
-        shopCode,
-        activationCode,
-      ],
-      limit: 1,
-    );
-
-    if (result.isEmpty) {
-      return false;
-    }
-
-    await db.update(
-      'shops',
-      {
-        'activated': 1,
-      },
-      where: 'id = ?',
-      whereArgs: [
-        result.first['id'],
-      ],
-    );
-
-    return true;
-  }
+  }) async => false;
 
   Future<Map<String, dynamic>?>
       loginShop(String shopCode) async {

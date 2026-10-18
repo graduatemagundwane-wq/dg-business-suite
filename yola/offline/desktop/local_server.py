@@ -393,7 +393,7 @@ def cached_license_valid() -> bool:
             return False
         return (utcnow() <= valid_until and
                 utcnow() <= datetime.fromisoformat(lease['offline_until']) and
-                utcnow() <= verified + timedelta(days=LICENSE_GRACE_DAYS))
+                utcnow() >= verified - timedelta(minutes=5))
     except Exception:
         return False
 

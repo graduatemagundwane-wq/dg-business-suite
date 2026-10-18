@@ -1,0 +1,103 @@
+name: Yola Same-Design Offline Windows CANDIDATE
+on:
+  push:
+    branches:
+      - build/yola-exact-ui-offline
+    paths:
+      - 'yola/offline/**'
+      - '.github/workflows/build-yola-same-ui-offline.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 50
+    defaults:
+      run:
+        working-directory: yola/offline
+    steps:
+      - name: Source checkout
+        uses: actions/checkout@v4
+      - name: Prepare Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          if ($LASTEXITCODE -ne 0) { throw 'pip bootstrap failed' }
+          python -m pip install -r requirements-build.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Dependency install failed' }
+      - name: Official Yola icon and static assets
+        shell: pwsh
+        run: |
+          @'
+          import base64,io
+          from pathlib import Path
+          from PIL import Image
+          root=Path.cwd()
+          src=(root/'../../yola/windows/brand.webp.b64').resolve()
+          image=Image.open(io.BytesIO(base64.b64decode(src.read_text().strip()))).convert('RGBA')
+          out=root/'desktop/static'
+          out.mkdir(parents=True,exist_ok=True)
+          image.save(out/'yola-brand.png')
+          icon=image.resize((256,256),Image.Resampling.LANCZOS)
+          icon.save(out/'yola.ico',sizes=[(16,16),(24,24),(32,32),(48,48),(64,64),(128,128),(256,256)])
+          (out/'device-activation.html').write_bytes((root/'desktop/device-activation.html').read_bytes())
+          for name in ('index.html','workspace.html','pos.js','pos.css','premium.css','app.js','style.css','device-activation.html'):
+              assert (out/name).exists(),name
+          print('PASS: preserved Yola design and brand')
+          '@ | Set-Content -Encoding UTF8 .\.assets.py
+          python .\.assets.py
+          if ($LASTEXITCODE -ne 0) { throw 'Branded asset preparation failed' }
+      - name: Strict security and local POS accounting tests
+        shell: pwsh
+        run: |
+          python -m py_compile desktop/local_server.py desktop/offline_web.py desktop/cloud_identity.py desktop/hybrid_app.py desktop/desktop_app.py
+          if ($LASTEXITCODE -ne 0) { throw 'Python compile failed' }
+          python test_offline_web.py
+          if ($LASTEXITCODE -ne 0) { throw 'Offline source acceptance tests failed' }
+          python desktop/desktop_app.py --self-test
+          if ($LASTEXITCODE -ne 0) { throw 'Offline server self-test failed' }
+      - name: Build branded native Windows executable
+        shell: pwsh
+        run: |
+          python -m PyInstaller --noconfirm --clean --onefile --windowed `
+            --name "Yola-Same-Design-Offline-TEST-CANDIDATE" `
+            --icon "desktop/static/yola.ico" `
+            --paths desktop `
+            --add-data "desktop/static;static" `
+            --add-data "desktop/license_public_key.b64;." `
+            --add-data "desktop/cloud_url.txt;." `
+            --add-data "VERSION;." `
+            --collect-all webview `
+            --collect-all uvicorn `
+            --hidden-import win32print `
+            desktop/desktop_app.py
+          if ($LASTEXITCODE -ne 0) { throw 'Yola PyInstaller build failed' }
+      - name: Test the actual packaged EXE
+        shell: pwsh
+        run: |
+          $exe=Join-Path $PWD 'dist/Yola-Same-Design-Offline-TEST-CANDIDATE.exe'
+          if (-not (Test-Path $exe)) { throw 'EXE missing' }
+          $log=Join-Path $env:TEMP 'yola_offline_premium_selftest.log'
+          Remove-Item $log -ErrorAction SilentlyContinue
+          $p=Start-Process -FilePath $exe -ArgumentList '--self-test' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "EXE self-test returned $($p.ExitCode)" }
+          if (-not (Test-Path $log)) { throw 'No packaged test log' }
+          if ((Get-Content $log -Raw).Trim() -ne 'PASS') { throw 'Packaged offline app did not start successfully' }
+          Get-FileHash $exe -Algorithm SHA256 | Format-List | Out-File -Encoding ascii dist/SHA256.txt
+          Write-Host 'PASS: packaged EXE starts local server, serves exact online Yola UI and embedded resources'
+      - name: Attach test EXE and digest (not customer release)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Yola-Same-Design-Offline-TEST-CANDIDATE
+          retention-days: 30
+          if-no-files-found: error
+          path: |
+            yola/offline/dist/Yola-Same-Design-Offline-TEST-CANDIDATE.exe
+            yola/offline/dist/SHA256.txt

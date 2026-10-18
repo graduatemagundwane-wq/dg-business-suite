@@ -1,146 +1,77 @@
-"""Yola Windows shell.
-
-Starts the local-only Yola API and hosts the premium desktop interface in a
-native WebView2 window. The customer EXE never exposes the Double Gee Tech admin
-secret; commercial activation is handled by the public Yola Control Center API.
-"""
-import json
-import os
-import socket
-import sys
-import threading
-import time
-import urllib.request
-import webbrowser
-import tempfile
-import traceback
+"""Yola Premium Offline Windows shell — local API, never a hosted web wrapper."""
+import json,os,socket,sys,tempfile,time,traceback,threading,urllib.request,webbrowser
 from pathlib import Path
-
 import uvicorn
-from local_server import app, STATIC_DIR, VERSION
+from hybrid_app import app
+from offline_web import STATIC_DIR
 
+def free_port():
+    with socket.socket(socket.AF_INET,socket.SOCK_STREAM) as sock:
+        sock.bind(('127.0.0.1',0));return sock.getsockname()[1]
 
-def free_port(default=8787):
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        try:
-            s.bind(("127.0.0.1", default))
-            return default
-        except OSError:
-            s.bind(("127.0.0.1", 0))
-            return s.getsockname()[1]
-
-
-def run_server(port):
-    # A windowed PyInstaller executable has no stdout/stderr streams. Avoid
-    # Uvicorn's console logging configuration and use explicit pure-Python
-    # protocols so the packaged server starts reliably on client PCs.
+def server(port):
     try:
-        config = uvicorn.Config(
-            app,
-            host="127.0.0.1",
-            port=port,
-            log_level="warning",
-            access_log=False,
-            log_config=None,
-            loop="asyncio",
-            http="h11",
-            ws="none",
-        )
+        config=uvicorn.Config(app,host='127.0.0.1',port=port,log_level='error',access_log=False,log_config=None,loop='asyncio',http='h11',ws='none')
         uvicorn.Server(config).run()
     except Exception:
+        Path(tempfile.gettempdir(),'yola_offline_error.log').write_text(traceback.format_exc(),encoding='utf8')
+
+def wait(port):
+    deadline=time.time()+20
+    while time.time()<deadline:
         try:
-            (Path(tempfile.gettempdir()) / "dg_pos_server_error.log").write_text(
-                traceback.format_exc(), encoding="utf-8"
-            )
-        except Exception:
-            pass
+            with urllib.request.urlopen(f'http://127.0.0.1:{port}/api/health',timeout=1) as r:
+                if json.load(r).get('localData'):return
+        except Exception:pass
+        time.sleep(.17)
+    raise RuntimeError('Yola offline service could not start; check local antivirus and diagnostic logs.')
 
-
-def wait_for_server(url: str, timeout: float = 12.0) -> None:
-    deadline = time.time() + timeout
-    last = None
-    while time.time() < deadline:
+class DeviceBridge:
+    """Windows peripheral detection, no unsupported universal device claims."""
+    def list_devices(self):
+        if sys.platform!='win32':return {'supported':False,'printers':[],'devices':[]}
+        import subprocess
+        printers=[];devices=[]
         try:
-            with urllib.request.urlopen(url + "/api/health", timeout=1.0) as res:
-                data = json.loads(res.read().decode("utf-8"))
-                if data.get("ok"):
-                    return
-        except Exception as exc:
-            last = exc
-        time.sleep(0.15)
-    raise RuntimeError(f"Yola local service did not start: {last}")
-
-
-def self_test() -> int:
-    """Windows build smoke-test used by CI before a client build is released."""
-    if not (STATIC_DIR / "index.html").exists():
-        raise RuntimeError(f"Missing packaged UI: {STATIC_DIR / 'index.html'}")
-    port = free_port(18787)
-    threading.Thread(target=run_server, args=(port,), daemon=True).start()
-    url = f"http://127.0.0.1:{port}"
-    try:
-        wait_for_server(url)
-    except Exception as exc:
-        err = Path(tempfile.gettempdir()) / "dg_pos_server_error.log"
-        detail = err.read_text(encoding="utf-8", errors="replace") if err.exists() else "No server exception was captured."
-        raise RuntimeError(f"{exc}\nServer diagnostic:\n{detail}") from exc
-    with urllib.request.urlopen(url + "/", timeout=3) as res:
-        html = res.read().decode("utf-8", errors="replace")
-    required = ["Yola", "Sell", "Products", "Stock Take", "Request activation"]
-    missing = [x for x in required if x not in html]
-    if missing:
-        raise RuntimeError("Packaged UI is incomplete: " + ", ".join(missing))
-    return 0
-
+            import win32print
+            printers=[p[2] for p in win32print.EnumPrinters(win32print.PRINTER_ENUM_LOCAL|win32print.PRINTER_ENUM_CONNECTIONS)]
+        except Exception:pass
+        try:
+            script="Get-PnpDevice -PresentOnly | Where-Object {$_.Class -in @('HIDClass','USB','Ports','Printer','Keyboard','Mouse','Bluetooth')} | Select-Object Class,FriendlyName,Status | ConvertTo-Json -Compress"
+            proc=subprocess.run(['powershell','-NoProfile','-NonInteractive','-Command',script],capture_output=True,timeout=12,creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
+            if proc.returncode==0:
+                j=json.loads(proc.stdout.decode('utf-8-sig',errors='replace'))
+                devices=j if isinstance(j,list) else [j]
+        except Exception:pass
+        return {'supported':True,'printers':printers[:100],'devices':devices[:150]}
 
 def main():
-    if "--self-test" in sys.argv:
-        try:
-            code = self_test()
-            log_path = Path(tempfile.gettempdir()) / "dg_pos_self_test.log"
-            log_path.write_text("PASS\n", encoding="utf-8")
-            raise SystemExit(code)
-        except SystemExit:
-            raise
-        except Exception:
-            log_path = Path(tempfile.gettempdir()) / "dg_pos_self_test.log"
-            log_path.write_text(traceback.format_exc(), encoding="utf-8")
-            raise SystemExit(1)
-
-    port = free_port(int(os.getenv("DG_POS_PORT", "8787")))
-    threading.Thread(target=run_server, args=(port,), daemon=True).start()
-    url = f"http://127.0.0.1:{port}"
-    try:
-        wait_for_server(url)
-    except Exception as exc:
-        # If the native shell cannot start, surface a clear Windows message rather
-        # than leaving the user on a blank/stuck page.
-        try:
-            import ctypes
-            ctypes.windll.user32.MessageBoxW(0, str(exc), "Yola could not start", 0x10)
-        except Exception:
-            pass
-        raise
-
+    for p in ('index.html','workspace.html','pos.js','pos.css','premium.css','device-activation.html'):
+        if not (STATIC_DIR/p).is_file():raise RuntimeError('Missing Yola UI: '+p)
+    port=free_port();threading.Thread(target=server,args=(port,),daemon=True).start();wait(port)
+    if '--self-test' in sys.argv:
+        # The packaged build passes only if its complete offline server started.
+        out=Path(tempfile.gettempdir(),'yola_offline_premium_selftest.log')
+        out.write_text('PASS',encoding='utf-8');return 0
+    url=f'http://127.0.0.1:{port}/'
     try:
         import webview
-        webview.create_window(
-            "Yola — Powered by Double Gee Tech",
-            url,
-            width=1440,
-            height=920,
-            min_size=(1024, 700),
-            background_color="#F3F5F8",
-            confirm_close=True,
-        )
-        webview.start(debug=False)
+        webview.create_window('Yola — Powered by Double Gee Tech',url,width=1440,height=900,min_size=(1000,680),background_color='#f4f7fa',js_api=DeviceBridge())
+        webview.start(gui='edgechromium',debug=False,private_mode=False)
     except Exception:
-        # Last-resort fallback still leaves the POS usable through the installed
-        # Windows browser instead of presenting a dead window.
         webbrowser.open(url)
-        while True:
-            time.sleep(3600)
-
-
-if __name__ == "__main__":
-    main()
+        try:
+            while True:time.sleep(3600)
+        except KeyboardInterrupt:pass
+    return 0
+if __name__=='__main__':
+    try:sys.exit(main())
+    except Exception as ex:
+        out=Path(tempfile.gettempdir(),'yola_offline_premium_selftest.log')
+        out.write_text(traceback.format_exc(),encoding='utf-8')
+        if '--self-test' not in sys.argv:
+            try:
+                import ctypes
+                ctypes.windll.user32.MessageBoxW(None,str(ex),'Yola startup error',0x10)
+            except Exception:pass
+        raise

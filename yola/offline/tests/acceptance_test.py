@@ -256,9 +256,9 @@ def main():
             cbranch=request(CLOUD,f'/api/admin/businesses/{biz}/branches','POST',{'name':'Bulawayo Branch','location':'Bulawayo'},headers={'X-Admin-Key':ADMIN}); assert cbranch['id']
 
             # 31 signed update metadata + hash/signature verification + staging.
-            dummy=td/'Yola-3.2.2.exe'; dummy.write_bytes(b'DG POS signed update acceptance payload')
-            digest=hashlib.sha256(dummy.read_bytes()).hexdigest(); request(CLOUD,'/api/admin/releases','POST',{'version':'3.2.2','url':dummy.as_uri(),'sha256':digest,'critical':False,'notes':'Acceptance update'},headers={'X-Admin-Key':ADMIN})
-            up=request(DESKTOP,'/api/updates/check',headers=H); assert up['update_available'] and up['version']=='3.2.2'
+            dummy=td/'Yola-9.9.9.exe'; dummy.write_bytes(b'DG POS signed update acceptance payload')
+            digest=hashlib.sha256(dummy.read_bytes()).hexdigest(); request(CLOUD,'/api/admin/releases','POST',{'version':'9.9.9','url':dummy.as_uri(),'sha256':digest,'critical':False,'notes':'Acceptance update'},headers={'X-Admin-Key':ADMIN})
+            up=request(DESKTOP,'/api/updates/check',headers=H); assert up['update_available'] and up['version']=='9.9.9'
             staged=request(DESKTOP,'/api/updates/download','POST',headers=H); assert staged['ready_to_install'] and Path(staged['path']).read_bytes()==dummy.read_bytes()
             install=request(DESKTOP,'/api/updates/install','POST',{'path':staged['path']},headers=H); assert install['ok'] is False  # Linux QA host; Windows launches the staged installer.
 

@@ -14,6 +14,8 @@ with tempfile.TemporaryDirectory(prefix='yola-test-') as work:
         return state['tenant'],{'business_name':'Testing Boutique','business_id':state['tenant'],'request_code':'YOLA-TEST-BIZ','license_token':'test signed by mock','lease_token':'test signed by mock'}
     y.lease=fake_lease
     cloud_identity.verify_online_password=lambda email,password:{'id':'owner-1' if 'owner' in email else 'worker-1','role':'owner' if 'owner' in email else 'worker','email':email,'name':'Owner' if 'owner' in email else 'Worker','businessCode':'YOLA-TEST-BIZ','license':{'active':True}}
+    # Never contact the real production service while exercising the offline fixture.
+    y.begin_session=lambda *a,**kw: (_ for _ in ()).throw(y.HTTPException(503,'Fixture cloud intentionally disconnected'))
     # imported function binding is separate
     y.verify_online_password=cloud_identity.verify_online_password
     def c(client,path,method='get',json=None,expected=200):

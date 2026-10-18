@@ -46,7 +46,19 @@ jobs:
               icon.save(assets/name)
           icon.save(assets/'yola.ico',sizes=[(16,16),(24,24),(32,32),(48,48),(64,64),(128,128),(256,256)])
           assert (assets/'index.html').exists()
-          print('Official Yola icon generated.')
+          # Restore cloud PWA fixtures expected by the full acceptance suite.
+          cloud_assets=root/'cloud/static'
+          cloud_assets.mkdir(parents=True,exist_ok=True)
+          icon.resize((192,192),Image.Resampling.LANCZOS).save(cloud_assets/'icon-192.png')
+          icon.resize((512,512),Image.Resampling.LANCZOS).save(cloud_assets/'icon-512.png')
+          import json
+          (cloud_assets/'manifest.webmanifest').write_text(json.dumps({
+              'name':'Yola — Powered by Double Gee Tech',
+              'short_name':'Yola','start_url':'/','display':'standalone',
+              'icons':[{'src':'/static/icon-192.png','sizes':'192x192','type':'image/png'},
+                       {'src':'/static/icon-512.png','sizes':'512x512','type':'image/png'}]
+          }),encoding='utf-8')
+          print('Official Yola icon and cloud QA assets generated.')
           '@ | Set-Content -Encoding UTF8 .\.generate-brand.py
           python .\.generate-brand.py
       - name: Validate local source (fixture cloud, production pins restored)

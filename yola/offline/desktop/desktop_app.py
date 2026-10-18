@@ -49,6 +49,20 @@ def main():
     for p in ('index.html','workspace.html','pos.js','pos.css','premium.css','device-activation.html'):
         if not (STATIC_DIR/p).is_file():raise RuntimeError('Missing Yola UI: '+p)
     port=free_port();threading.Thread(target=server,args=(port,),daemon=True).start();wait(port)
+    if '--self-test' not in sys.argv:
+        # Background network tasks never block a checkout or receipt.
+        def periodic_reconcile():
+            from offline_web import sync_local_events
+            from local_server import verify_license,read_license
+            while True:
+                try:
+                    if read_license().get('license_token'):
+                        try:verify_license()  # refresh signed offline lease when online
+                        except Exception:pass  # temporary outage must not stop local sales
+                    sync_local_events(limit=50)
+                except Exception:pass
+                time.sleep(300)
+        threading.Thread(target=periodic_reconcile,daemon=True,name='yola-background-sync').start()
     if '--self-test' in sys.argv:
         # The packaged build passes only if its complete offline server started.
         out=Path(tempfile.gettempdir(),'yola_offline_premium_selftest.log')

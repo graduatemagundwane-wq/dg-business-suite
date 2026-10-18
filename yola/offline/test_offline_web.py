@@ -9,7 +9,6 @@ with tempfile.TemporaryDirectory(prefix='yola-test-') as work:
     import local_server
     import cloud_identity
     state={'active':False,'tenant':'YOLA-tenant-1'}
-    y.begin_session=lambda *args:(_ for _ in ()).throw(y.HTTPException(503,'QA cannot access the internet'))
     def fake_lease():
         if not state['active']:raise y.HTTPException(403,'No signed DG Tech licence')
         return state['tenant'],{'business_name':'Testing Boutique','business_id':state['tenant'],'request_code':'YOLA-TEST-BIZ','license_token':'test signed by mock','lease_token':'test signed by mock'}
@@ -61,6 +60,21 @@ with tempfile.TemporaryDirectory(prefix='yola-test-') as work:
     c(worker,'/api/pos/product','post',{'name':'Forbidden','price_cents':1},403)
     c(worker,'/api/pos/stock','post',{'product_id':p,'delta':2},403)
     c(worker,'/api/pos/expense','post',{'title':'Forbidden','amount_cents':1,'payment_method':'cash'},403)
+    # A disconnected queue must never lose sales. Only a reconciled cloud ACK
+    # advances synced=1; repeated delivery carries the same idempotency key.
+    sent=[]
+    def store_reconciled(path,payload,method='POST',timeout=15):
+        assert path=='/api/sync/event' and method=='POST'
+        sent.append(payload['event_key'])
+        return {'stored':True,'reconciled':True}
+    y.cloud_json=lambda *args,**kwargs: (_ for _ in ()).throw(OSError('offline'))
+    missed=y.sync_local_events(100)
+    assert missed['pending']>0 and missed['reconciled']==0
+    y.cloud_json=store_reconciled
+    result=y.sync_local_events(100)
+    assert result['pending']==0 and result['reconciled']>0
+    assert len(sent)==len(set(sent))
+    assert y.sync_local_events(100)['reconciled']==0
     # Expired signed device lease always locks local data even with session cookie.
     state['active']=False
     assert c(worker,'/api/me')['authenticated'] is False

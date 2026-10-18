@@ -82,7 +82,7 @@ def main():
     pin=local_server.trusted_license_public_key()
     verify_public_key(pin)
     native=TestClient(local_server.app)
-    args={'business_name':company,'owner_name':owner,'phone':'','owner_pin':'387159','existing_registration_id':code,'email':account,'password':password}
+    args={'business_name':company,'owner_name':owner,'phone':'+263000000','owner_pin':'387159','existing_registration_id':code,'email':account,'password':password}
     reply=native.post('/api/activation/request',json=args)
     check(reply.status_code==403,'Master Control prevents desktop device enrollment while business is pending')
     def approved():

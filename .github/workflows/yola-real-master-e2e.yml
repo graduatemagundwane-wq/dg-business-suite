@@ -1,0 +1,35 @@
+name: Yola Real Master Control and Offline Release E2E
+on:
+  push:
+    branches:
+      - qa/yola-production-release-e2e
+    paths:
+      - 'yola/offline/tests/live_end_to_end.py'
+      - '.github/workflows/yola-real-master-e2e.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live-master-and-offline:
+    runs-on: windows-latest
+    timeout-minutes: 47
+    defaults:
+      run:
+        working-directory: yola/offline
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Prepare QA Python dependencies
+        shell: pwsh
+        run: |
+          python -m pip install -r requirements-build.txt
+          if ($LASTEXITCODE -ne 0) { throw "Yola test dependencies unavailable" }
+      - name: Verify live signing and four Master Control release scenarios
+        shell: pwsh
+        run: |
+          python -u tests/live_end_to_end.py
+          if ($LASTEXITCODE -ne 0) { throw "Real Yola activation/offline/reconciliation/suspension/renewal FAILED" }

@@ -9,6 +9,7 @@ with tempfile.TemporaryDirectory(prefix='yola-test-') as work:
     import local_server
     import cloud_identity
     state={'active':False,'tenant':'YOLA-tenant-1'}
+    y.begin_session=lambda *args:(_ for _ in ()).throw(y.HTTPException(503,'QA cannot access the internet'))
     def fake_lease():
         if not state['active']:raise y.HTTPException(403,'No signed DG Tech licence')
         return state['tenant'],{'business_name':'Testing Boutique','business_id':state['tenant'],'request_code':'YOLA-TEST-BIZ','license_token':'test signed by mock','lease_token':'test signed by mock'}

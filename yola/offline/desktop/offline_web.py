@@ -22,7 +22,7 @@ from urllib.parse import urlparse
 from fastapi import FastAPI, Request, HTTPException, Response
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from local_server import db, cached_license_valid, read_license, STATIC_DIR as LEGACY_STATIC
+from local_server import db, cached_license_valid, read_license, DEVICE_ID, cloud_json, STATIC_DIR as LEGACY_STATIC
 from cloud_identity import verify_online_password,begin_session,session_status
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -105,11 +105,16 @@ def sql_init():
         CREATE TABLE IF NOT EXISTS yola_local_events (
           id TEXT PRIMARY KEY, tenant TEXT NOT NULL, kind TEXT NOT NULL,
           payload TEXT NOT NULL, created_at TEXT NOT NULL,
-          synced INTEGER NOT NULL DEFAULT 0);
+          synced INTEGER NOT NULL DEFAULT 0,
+          uploaded_at TEXT, last_error TEXT);
         CREATE INDEX IF NOT EXISTS yola_l_product_tenant ON yola_local_products(tenant,active,name);
         CREATE INDEX IF NOT EXISTS yola_l_sale_tenant ON yola_local_sales(tenant,created_at);
         CREATE INDEX IF NOT EXISTS yola_l_event_unsynced ON yola_local_events(tenant,synced);
         """)
+        # Non-destructive migration for existing local Yola databases.
+        existing={r[1] for r in c.execute('PRAGMA table_info(yola_local_events)')}
+        for col in ('uploaded_at','last_error'):
+            if col not in existing:c.execute(f'ALTER TABLE yola_local_events ADD COLUMN {col} TEXT')
 
 sql_init()
 
@@ -184,7 +189,7 @@ def journal(c,tenant,source,source_id,description,entries):
 
 
 def event(c,tenant,kind,obj):
-    c.execute('INSERT INTO yola_local_events VALUES(?,?,?,?,?,0)',(uid(),tenant,kind,json.dumps(obj),now()))
+    c.execute('INSERT INTO yola_local_events(id,tenant,kind,payload,created_at,synced) VALUES(?,?,?,?,?,0)',(uid(),tenant,kind,json.dumps(obj),now()))
 
 
 def low_stock(c,tenant,p,old_count,new_count):
@@ -386,7 +391,9 @@ async def checkout(request:Request):
         entries=[({'cash':'1000','bank':'1010','card':'1010','mobile':'1020','credit':'1100'}[b['payment_method']],total,0),('4000',0,subtotal-discount),('2000',0,taxes)]
         if cost:entries.extend([('5000',cost,0),('1200',0,cost)])
         journal(c,t,'sale',sid,'Sale #'+str(sale_no),entries)
-        event(c,t,'sale.complete',{'id':sid,'number':sale_no,'items':[{'id':p['id'],'qty':p['qty']} for p in lines],'total_cents':total,'idempotency_key':key})
+        event(c,t,'sale.complete',{'sale':one(c,'SELECT * FROM yola_local_sales WHERE tenant=? AND id=?',t,sid),
+           'lines':rows(c,'SELECT * FROM yola_local_sale_lines WHERE tenant=? AND sale_id=?',t,sid),
+           'cashier_email':u['email']})
     return {'sale':{'id':sid,'sale_number':sale_no,'total_cents':total}}
 
 @app.get('/api/pos/sales')
@@ -423,7 +430,7 @@ async def refund(request:Request):
         s=one(c,'SELECT * FROM yola_local_sales WHERE id=? AND tenant=?',sid,t)
         if not s:raise HTTPException(404,'Sale not found')
         if one(c,'SELECT id FROM yola_local_refunds WHERE tenant=? AND sale_id=?',t,sid):raise HTTPException(409,'Already refunded')
-        c.execute('INSERT INTO yola_local_refunds VALUES(?,?,?,?,?,?)',(uid(),t,sid,reason,int(restock),now()))
+        rid=uid();c.execute('INSERT INTO yola_local_refunds VALUES(?,?,?,?,?,?)',(rid,t,sid,reason,int(restock),now()))
         subtotal=s['subtotal_cents']-s['discount_cents']
         entries=[('4000',subtotal,0),('2000',s['tax_cents'],0),({'cash':'1000','card':'1010','mobile':'1020','bank':'1010','credit':'1100'}[s['payment_method']],0,s['total_cents'])]
         if restock:
@@ -431,7 +438,7 @@ async def refund(request:Request):
             for line in lines:c.execute('UPDATE yola_local_products SET stock_qty=stock_qty+? WHERE id=? AND tenant=?',(line['qty'],line['product_id'],t))
             if s['cost_cents']:entries += [('1200',s['cost_cents'],0),('5000',0,s['cost_cents'])]
         journal(c,t,'refund',sid,reason,entries)
-        event(c,t,'refund',{'sale_id':sid,'reason':reason,'restock':restock})
+        event(c,t,'refund',{'id':rid,'sale_id':sid,'reason':reason,'restock':restock,'cashier_email':u['email']})
     return {'success':True}
 
 @app.post('/api/pos/expense')
@@ -442,7 +449,7 @@ async def expense(request:Request):
     with db() as c:
         c.execute('INSERT INTO yola_local_expenses VALUES(?,?,?,?,?,?,?)',(expense_id,t,title,amount,method,u['id'],now()))
         journal(c,t,'expense',expense_id,title,[('6100',amount,0),({'cash':'1000','bank':'1010','mobile':'1020','card':'1010'}[method],0,amount)])
-        event(c,t,'expense',{'id':expense_id,'amount_cents':amount,'title':title})
+        event(c,t,'expense',{'id':expense_id,'amount_cents':amount,'title':title,'payment_method':method,'owner_email':u['email'],'created_at':now()})
     return {'id':expense_id}
 
 @app.get('/api/pos/expenses')
@@ -499,7 +506,10 @@ async def create_document(request:Request):
     with db() as c:
         no=c.execute('SELECT coalesce(max(document_no),0)+1 FROM yola_local_documents WHERE tenant=?',(t,)).fetchone()[0]
         c.execute('INSERT INTO yola_local_documents VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)',(id,t,no,b['kind'],customer,str(b.get('customer_contact') or ''),str(b.get('notes') or ''),json.dumps(clean),subtotal,tax,subtotal+tax,u['id'],now()))
-        event(c,t,'document.create',{'id':id,'kind':b['kind'],'total_cents':subtotal+tax})
+        event(c,t,'document.create',{'document':{'id':id,'kind':b['kind'],'customer_name':customer,
+          'customer_contact':str(b.get('customer_contact') or ''),'notes':str(b.get('notes') or ''),
+          'items':clean,'subtotal_cents':subtotal,'tax_cents':tax,'total_cents':subtotal+tax,
+          'created_at':now()},'owner_email':u['email']})
     return {'document':{'id':id,'document_no':no,'kind':b['kind'],'total_cents':subtotal+tax},'affectsSales':False,'affectsStock':False}
 
 @app.get('/api/pos/settings')
@@ -558,3 +568,45 @@ def static_asset(asset:str):
     if asset in {'pos.js','pos.css','premium.css','app.js','style.css','yola-brand.png','yola-brand-144.webp','yola-brand-180.webp'}:
         return FileResponse(STATIC_DIR/asset)
     raise HTTPException(404,'Not found')
+
+
+# Upload from this PC is independent of checkout, so a missing connection NEVER
+# interrupts a sale. ACK requires an actual committed Neon journal transaction.
+def sync_local_events(limit=30):
+    try:tenant,lic=lease()
+    except HTTPException:return {'reconciled':0,'pending':0,'status':'licence_unavailable'}
+    with db() as c:
+        events=rows(c,'SELECT * FROM yola_local_events WHERE tenant=? AND synced=0 ORDER BY created_at,id LIMIT ?',tenant,limit)
+    done=0
+    for entry in events:
+        try:
+            ack=cloud_json('/api/sync/event',{'device_id':DEVICE_ID,'license_token':lic['license_token'],
+                'event_key':entry['id'],'event_type':entry['kind'],
+                'payload':json.loads(entry['payload'])},'POST',timeout=15)
+            if not ack.get('stored'):raise RuntimeError('Cloud event was not durably stored')
+            with db() as c:
+                if ack.get('reconciled'):
+                    c.execute('UPDATE yola_local_events SET synced=1,uploaded_at=?,last_error=NULL WHERE id=? AND tenant=?',(now(),entry['id'],tenant))
+                    done+=1
+                else:
+                    c.execute('UPDATE yola_local_events SET uploaded_at=?,last_error=? WHERE id=? AND tenant=?',(now(),'Uploaded; awaiting confirmed accounting/inventory reconciliation',entry['id'],tenant))
+            if not ack.get('reconciled'):break # preserve original ordering for dependent events
+        except Exception as error:
+            with db() as c:c.execute('UPDATE yola_local_events SET last_error=? WHERE id=? AND tenant=?',(str(error)[:500],entry['id'],tenant))
+            break
+    with db() as c:
+        pending=c.execute('SELECT COUNT(*) FROM yola_local_events WHERE tenant=? AND synced=0',(tenant,)).fetchone()[0]
+    return {'reconciled':done,'pending':pending,'status':'synced' if not pending else 'pending'}
+
+@app.get('/api/sync/status')
+def offline_sync_status(request:Request):
+    u,t,_=auth(request,{'owner','manager'})
+    with db() as c:
+        count=c.execute('SELECT COUNT(*) FROM yola_local_events WHERE tenant=? AND synced=0',(t,)).fetchone()[0]
+        latest=one(c,'SELECT last_error,uploaded_at FROM yola_local_events WHERE tenant=? AND synced=0 ORDER BY created_at LIMIT 1',t)
+    return {'pending':count,'oldest':latest,'localOperationsContinueOffline':True}
+
+@app.post('/api/sync/flush')
+def offline_sync_flush(request:Request):
+    auth(request,{'owner','manager'})
+    return sync_local_events(limit=100)

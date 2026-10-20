@@ -1,0 +1,88 @@
+name: Yola Android Same-UI APK CANDIDATE
+
+on:
+  push:
+    branches:
+      - feature/yola-android-ui-parity-20261020
+    paths:
+      - 'lib/main_yola_android.dart'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - 'android/**'
+      - 'yola/windows/brand.webp.b64'
+      - '.github/workflows/build-yola-android-same-ui.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Verify shared Yola desktop/browser UI source
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          root = Path('yola/offline/desktop/static')
+          assert (root/'workspace.html').is_file()
+          css = (root/'premium.css').read_text(encoding='utf-8')
+          base = (root/'pos.css').read_text(encoding='utf-8')
+          assert 'grid-template-columns:266px' in css, 'Desktop Yola sidebar reference changed'
+          assert '@media(max-width:780px)' in css, 'Phone/tablet responsive reference missing'
+          assert '@media(max-width:760px)' in base, 'Mobile POS source missing'
+          assert 'yola-onboarding.vercel.app' in Path('lib/main_yola_android.dart').read_text()
+          print('PASS: APK targets the ORIGINAL Yola web UI; not a redesigned Flutter imitation.')
+          PY
+      - name: Apply official Yola logo as Android launcher icon
+        run: |
+          python -m pip install --quiet pillow
+          python - <<'PY'
+          import base64, io
+          from pathlib import Path
+          from PIL import Image, ImageOps
+          src = Path('yola/windows/brand.webp.b64')
+          img = Image.open(io.BytesIO(base64.b64decode(src.read_text().strip()))).convert('RGBA')
+          for density, size in [('mdpi',48), ('hdpi',72), ('xhdpi',96), ('xxhdpi',144), ('xxxhdpi',192)]:
+              path = Path(f'android/app/src/main/res/mipmap-{density}/ic_launcher.png')
+              path.parent.mkdir(parents=True, exist_ok=True)
+              ImageOps.fit(img, (size,size), Image.Resampling.LANCZOS).save(path)
+          print('PASS: same official Yola logo used in desktop Windows.')
+          PY
+      - name: Install Flutter project dependencies
+        run: flutter pub get
+      - name: Analyze Android WebView entrypoint
+        run: flutter analyze lib/main_yola_android.dart
+      - name: Build APK - UI parity candidate, not offline certified
+        run: flutter build apk --release -t lib/main_yola_android.dart --build-name 0.1.0 --build-number 1
+      - name: Package with clear TEST CANDIDATE status
+        run: |
+          mkdir -p yola-android-artifact
+          cp build/app/outputs/flutter-apk/app-release.apk yola-android-artifact/Yola-Android-Same-UI-TEST-CANDIDATE.apk
+          sha256sum yola-android-artifact/*.apk > yola-android-artifact/SHA256.txt
+          cat > yola-android-artifact/READ-ME-FIRST.txt <<'TXT'
+          YOLA Android — UI parity test candidate only
+          Same original hosted Yola frontend, phone and landscape tablet.
+          Requires internet and the running hosted Yola API.
+          Offline transactions, printer/scanner hardware and physical tablet
+          visual parity are NOT yet acceptance tested.
+          Signed with the Flutter project's DEBUG signing key. DO NOT hand
+          to a paying client as a production-ready APK.
+          TXT
+      - name: Upload Android UI test artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Yola-Android-Same-UI-TEST-CANDIDATE
+          retention-days: 30
+          if-no-files-found: error
+          path: yola-android-artifact/

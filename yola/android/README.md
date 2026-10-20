@@ -16,7 +16,8 @@
 - [x] Android native WebView entrypoint, same live Yola UI URL, normal device rotation.
 - [x] Dedicated Android package ID and Yola label.
 - [x] CI recipe to apply the official Yola logo and build downloadable test APK.
-- [x] CI compilation passed on 20 October 2026 (GitHub Actions run 39489411849; APK artifact 12294464679).\n- [ ] Physical installation on a phone and tablet accepted.
+- [x] CI compilation passed on 20 October 2026 (GitHub Actions run 39489411849; APK artifact 12294464679).
+- [ ] Physical installation on a phone and tablet accepted.
 - [ ] Side-by-side screenshots matching original Yola on Android phone / portrait tablet / landscape tablet / Windows PC.
 - [ ] Offline signed licence and activation works for Android as it does on Windows.
 - [ ] Real offline sales and stock updates integrated with local SQLite.

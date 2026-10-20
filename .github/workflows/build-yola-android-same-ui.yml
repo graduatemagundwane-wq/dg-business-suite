@@ -59,6 +59,18 @@ jobs:
               ImageOps.fit(img, (size,size), Image.Resampling.LANCZOS).save(path)
           print('PASS: same official Yola logo used in desktop Windows.')
           PY
+      - name: Accept required Android SDK licences and install pinned NDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER="$(find "${ANDROID_HOME}/cmdline-tools" -name sdkmanager -type f | head -1)"
+          fi
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || test "${PIPESTATUS[1]}" -eq 0
+          "$SDKMANAGER" --install "ndk;30.0.14904198"
+          test -f "${ANDROID_HOME}/ndk/30.0.14904198/source.properties"
       - name: Install Flutter project dependencies
         run: flutter pub get
       - name: Analyze Android WebView entrypoint

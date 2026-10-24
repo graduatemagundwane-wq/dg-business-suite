@@ -110,7 +110,7 @@ function showProductForm(p=null){
   <div class="note" id="margin-preview" aria-live="polite">Margin: —</div>
   ${edit?'':field('stock_qty','Opening stock quantity','number','min="0" step="1" value="0"')}
   ${field('min_stock','Low stock threshold','number','min="0" step="1"')}
-  ${field('tax','Tax rate %','number','min="0" max="30" step="0.01")}
+  ${field('tax','Tax rate %','number','min="0" max="30" step="0.01"')}
   </div><button class="btn primary" type="submit">${edit?'Save changes':'Save item'}</button></form>`;
   const form=$('addform');for(const [k,v] of Object.entries({
       name:p?.name||'',quality:p?.quality||'',category:p?.category||'General',

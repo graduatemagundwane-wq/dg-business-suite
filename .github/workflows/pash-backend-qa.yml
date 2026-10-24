@@ -1,0 +1,37 @@
+name: PASH Auto Backend QA
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - pash-auto-operations-qa-20261024
+    paths:
+      - pash-operations/**
+      - .github/workflows/pash-backend-qa.yml
+permissions:
+  contents: read
+jobs:
+  api-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Expand isolated PASH QA source
+        run: |
+          python - <<'PY'
+          import base64,io,zipfile
+          from pathlib import Path
+          data=base64.b64decode(Path('pash-operations/source-v0.5.0.zip.b64').read_text().strip())
+          with zipfile.ZipFile(io.BytesIO(data)) as z:
+              for info in z.infolist():
+                  p=Path(info.filename)
+                  if p.is_absolute() or '..' in p.parts: raise ValueError('Unsafe archive path')
+              z.extractall('pash-operations/app')
+          PY
+      - name: Install requirements
+        run: python -m pip install -r pash-operations/app/backend/requirements.txt
+      - name: Run backend integration tests
+        working-directory: pash-operations/app/backend
+        run: pytest -q

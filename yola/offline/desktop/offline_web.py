@@ -452,11 +452,149 @@ async def stock(request:Request):
         event(c,t,'stock.adjust',{'product_id':p['id'],'delta':delta,'reason':str(b.get('reason',''))[:140]})
     return {'success':True}
 
+def customer_snapshot(c,tenant,customer_id):
+    customer=one(c,'SELECT * FROM yola_local_customers WHERE tenant=? AND id=? AND active=1',tenant,customer_id)
+    if not customer:raise HTTPException(404,'Customer not found')
+    sales=rows(c,'''SELECT s.id,s.number AS sale_number,s.total_cents,s.due_date,s.created_at,
+        EXISTS(SELECT 1 FROM yola_local_refunds r WHERE r.tenant=s.tenant AND r.sale_id=s.id) AS refunded,
+        coalesce((SELECT sum(a.amount_cents) FROM yola_local_customer_allocations a
+          WHERE a.tenant=s.tenant AND a.sale_id=s.id),0) AS allocated_cents
+        FROM yola_local_sales s WHERE s.tenant=? AND s.customer_id=?
+        AND s.payment_method='credit' ORDER BY s.due_date,s.created_at''',tenant,customer_id)
+    total_balance=overdue=0
+    today=datetime.now(timezone.utc).date().isoformat()
+    for sale in sales:
+        sale['remaining_cents']=(0 if sale['refunded'] else sale['total_cents'])-sale['allocated_cents']
+        total_balance+=sale['remaining_cents']
+        if sale['due_date'] and sale['due_date']<today and sale['remaining_cents']>0:
+            overdue+=sale['remaining_cents']
+    money=rows(c,'''SELECT kind,coalesce(sum(amount_cents),0) AS amount FROM yola_local_customer_cash_entries
+        WHERE tenant=? AND customer_id=? GROUP BY kind''',tenant,customer_id)
+    kinds={x['kind']:x['amount'] for x in money}
+    deposit=kinds.get('deposit',0)-kinds.get('apply_deposit',0)
+    return {'customer':customer,'sales':sales,'balance_cents':total_balance,
+            'due_cents':max(0,total_balance),'customer_credit_cents':max(0,-total_balance),
+            'deposit_cents':deposit,'overdue_cents':overdue}
+
+
+def _allocate_customer_credit(c,tenant,customer_id,entry_id,amount):
+    remaining=amount
+    snapshot=customer_snapshot(c,tenant,customer_id)
+    for sale in snapshot['sales']:
+        open_amount=max(0,sale['remaining_cents'])
+        applying=min(open_amount,remaining)
+        if applying:
+            c.execute('''INSERT INTO yola_local_customer_allocations VALUES(?,?,?,?,?)''',
+                (uid(),tenant,entry_id,sale['id'],applying))
+            remaining-=applying
+        if not remaining:break
+    if remaining:raise HTTPException(409,'Amount exceeds outstanding invoices')
+
+
+@app.get('/api/pos/customers')
+def customers(request:Request):
+    u,t,_=auth(request,{'owner','manager','worker'})
+    with db() as c:
+        listing=rows(c,'SELECT * FROM yola_local_customers WHERE tenant=? AND active=1 ORDER BY name',t)
+        if u['role']=='worker':
+            return {'customers':[{'id':v['id'],'name':v['name']} for v in listing]}
+        return {'customers':[{**v,**{k:value for k,value in customer_snapshot(c,t,v['id']).items()
+                   if k in ('due_cents','deposit_cents','overdue_cents','customer_credit_cents')}}
+                   for v in listing]}
+
+
+@app.get('/api/pos/customer')
+def customer_detail(request:Request,id:str):
+    u,t,_=auth(request,{'owner','manager'},'customers')
+    with db() as c:
+        result=customer_snapshot(c,t,id)
+        result['payments']=rows(c,'''SELECT kind,amount_cents,payment_method,reference,created_at
+            FROM yola_local_customer_cash_entries WHERE tenant=? AND customer_id=?
+            ORDER BY created_at DESC LIMIT 150''',t,id)
+        return result
+
+
+@app.post('/api/pos/customer')
+async def save_customer(request:Request):
+    u,t,_=auth(request,{'owner','manager'},'customers')
+    b=await request.json()
+    name=str(b.get('name') or '').strip()[:140]
+    if not name:raise HTTPException(422,'Customer name required')
+    limit=cents(b.get('credit_limit_cents',0))
+    days=b.get('terms_days',30)
+    if isinstance(days,bool) or not isinstance(days,int) or not 0<=days<=365:
+        raise HTTPException(422,'Payment terms must be 0–365 days')
+    cid=str(b.get('id') or uid())
+    with db() as c:
+        prior=one(c,'SELECT id FROM yola_local_customers WHERE id=? AND tenant=? AND active=1',cid,t)
+        if b.get('id') and not prior:raise HTTPException(404,'Customer not found')
+        if prior:
+            c.execute('''UPDATE yola_local_customers SET name=?,phone=?,email=?,credit_limit_cents=?,terms_days=?
+                WHERE id=? AND tenant=?''',(name,str(b.get('phone') or '')[:50],
+                str(b.get('email') or '')[:200],limit,days,cid,t))
+        else:
+            c.execute('''INSERT INTO yola_local_customers VALUES (?,?,?,?,?,?,?,?,?)''',
+                      (cid,t,name,str(b.get('phone') or '')[:50],
+                       str(b.get('email') or '')[:200],limit,days,1,now()))
+        event(c,t,'customer.save',{'id':cid,'name':name,'terms_days':days,'actor':u['id']})
+    return {'id':cid,'success':True}
+
+
+@app.post('/api/pos/customer/settle')
+async def settle_customer(request:Request):
+    u,t,_=auth(request,{'owner','manager'},'customers')
+    b=await request.json()
+    kind=b.get('kind')
+    if kind not in ('payment','deposit','apply_deposit'):raise HTTPException(422,'Invalid customer payment type')
+    amount=cents(b.get('amount_cents',-1))
+    if not amount:raise HTTPException(422,'Enter a positive amount')
+    method=str(b.get('payment_method') or '')
+    if kind!='apply_deposit' and method not in ('cash','bank','mobile','card'):
+        raise HTTPException(422,'Invalid payment method')
+    if kind=='apply_deposit':method='deposit'
+    key=str(b.get('idempotency_key') or '')
+    if not 10<=len(key)<=100:raise HTTPException(422,'Idempotency key required')
+    cid=str(b.get('customer_id') or '')
+    cash_code={'cash':'1000','bank':'1010','card':'1010','mobile':'1020'}.get(method)
+    with db() as c:
+        c.execute('BEGIN IMMEDIATE')
+        old=one(c,'SELECT id,kind,amount_cents,customer_id FROM yola_local_customer_cash_entries WHERE tenant=? AND idempotency_key=?',t,key)
+        if old:
+            if (old['customer_id'],old['kind'],old['amount_cents'])!=(cid,kind,amount):
+                raise HTTPException(409,'Payment key reused with different details')
+            return {'success':True,'duplicate':True,'id':old['id']}
+        snapshot=customer_snapshot(c,t,cid)
+        if kind in ('payment','apply_deposit') and amount>snapshot['due_cents']:
+            raise HTTPException(422,'Amount exceeds customer dues. Record excess as a deposit.')
+        if kind=='apply_deposit' and amount>snapshot['deposit_cents']:
+            raise HTTPException(422,'Insufficient customer deposit')
+        eid=uid()
+        c.execute('''INSERT INTO yola_local_customer_cash_entries
+            (id,tenant,customer_id,kind,amount_cents,payment_method,reference,idempotency_key,created_by,created_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?)''',
+            (eid,t,cid,kind,amount,method,str(b.get('reference') or '')[:160],key,u['id'],now()))
+        if kind in ('payment','apply_deposit'):
+            _allocate_customer_credit(c,t,cid,eid,amount)
+        entries=(
+            [(cash_code,amount,0),('1100',0,amount)] if kind=='payment'
+            else [(cash_code,amount,0),('2100',0,amount)] if kind=='deposit'
+            else [('2100',amount,0),('1100',0,amount)]
+        )
+        journal(c,t,'customer.'+kind,eid,kind+' for '+snapshot['customer']['name'],entries)
+        event(c,t,'customer.'+kind,{'id':eid,'customer_id':cid,'kind':kind,
+            'amount_cents':amount,'payment_method':method,'reference':str(b.get('reference') or '')[:160]})
+        result=customer_snapshot(c,t,cid)
+    return {'id':eid,'success':True,'due_cents':result['due_cents'],
+            'deposit_cents':result['deposit_cents']}
+
+
 @app.post('/api/pos/checkout')
 async def checkout(request:Request):
     u,t,_=auth(request,{'owner','manager','worker'});b=await request.json();items=b.get('items')
     if not isinstance(items,list) or not 1<=len(items)<=100:raise HTTPException(422,'Add items to cart')
     if b.get('payment_method') not in {'cash','bank','card','mobile','credit'}:raise HTTPException(422,'Invalid payment method')
+    if b['payment_method']=='credit':
+        auth(request,{'owner','manager'},'credit')
     key=str(b.get('idempotency_key') or '');
     if not 10<=len(key)<=100:raise HTTPException(422,'Checkout requires idempotency key')
     discount=cents(b.get('discount_cents',0))
@@ -485,7 +623,25 @@ async def checkout(request:Request):
             net=round(p['price_cents']*p['qty']*(subtotal-discount)/subtotal) if subtotal else 0
             tax=round(net*p['tax_bps']/10000);taxes+=tax;computed.append((p,net,tax))
         total=subtotal-discount+taxes;sid=uid()
-        c.execute('INSERT INTO yola_local_sales VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)',(sid,t,u['id'],sale_no,subtotal,discount,taxes,total,cost,b['payment_method'],str(b.get('customer_name') or '')[:120],key,now()))
+        customer_id=str(b.get('customer_id') or '') or None
+        due_date=None
+        customer_name=str(b.get('customer_name') or '')[:120]
+        if b['payment_method']=='credit' and not customer_id:
+            raise HTTPException(422,'Select a registered customer for credit sales')
+        if customer_id:
+            customer=customer_snapshot(c,t,customer_id)
+            customer_name=customer['customer']['name']
+            if b['payment_method']=='credit':
+                limit=customer['customer']['credit_limit_cents']
+                if limit and customer['due_cents']+total>limit:
+                    raise HTTPException(422,'Customer credit limit exceeded')
+                due_date=(datetime.now(timezone.utc)+timedelta(days=customer['customer']['terms_days'])).date().isoformat()
+        c.execute('''INSERT INTO yola_local_sales
+            (id,tenant,cashier_id,number,subtotal_cents,discount_cents,tax_cents,total_cents,
+             cost_cents,payment_method,customer_name,idempotency_key,created_at,customer_id,due_date)
+            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+            (sid,t,u['id'],sale_no,subtotal,discount,taxes,total,cost,
+             b['payment_method'],customer_name,key,now(),customer_id,due_date))
         for p,net,tax in computed:
             c.execute('''INSERT INTO yola_local_sale_lines
                   (id,tenant,sale_id,product_id,name,qty,unit_price_cents,unit_cost_cents,net_cents,tax_cents,total_cents,kind)
@@ -498,7 +654,7 @@ async def checkout(request:Request):
                 low_stock(c,t,p,p['stock_qty'],p['stock_qty']-p['qty'])
         entries=[({'cash':'1000','bank':'1010','card':'1010','mobile':'1020','credit':'1100'}[b['payment_method']],total,0),('4000',0,subtotal-discount),('2000',0,taxes)]
         if stock_cost:entries.extend([('5000',stock_cost,0),('1200',0,stock_cost)])
-        if service_cost:entries.extend([('5100',service_cost,0),('1000',0,service_cost)])
+        if service_cost:entries.extend([('5100',service_cost,0),('2200',0,service_cost)])
         journal(c,t,'sale',sid,'Sale #'+str(sale_no),entries)
         event(c,t,'sale.complete',{'sale':one(c,'SELECT * FROM yola_local_sales WHERE tenant=? AND id=?',t,sid),
            'lines':rows(c,'SELECT * FROM yola_local_sale_lines WHERE tenant=? AND sale_id=?',t,sid),
@@ -569,7 +725,7 @@ def expenses(request:Request):
     u,t,_=auth(request,{'owner'});
     with db() as c:return {'expenses':rows(c,'''SELECT e.id,e.title,e.amount_cents,e.payment_method,e.created_at,u.name AS created_by FROM yola_local_expenses e JOIN yola_local_accounts u ON u.id=e.created_by WHERE e.tenant=? ORDER BY e.created_at DESC LIMIT 100''',t)}
 
-CHART=[('1000','Cash','asset'),('1010','Bank and card clearing','asset'),('1020','Mobile money','asset'),('1100','Accounts receivable','asset'),('1200','Inventory','asset'),('2000','Tax payable','liability'),('3000','Opening capital','equity'),('4000','Sales revenue','income'),('4900','Stock adjustment income','income'),('5000','Cost of goods sold','expense'),('5100','Service delivery costs','expense'),('6100','Operating expenses','expense'),('6200','Stock shrinkage','expense')]
+CHART=[('1000','Cash','asset'),('1010','Bank and card clearing','asset'),('1020','Mobile money','asset'),('2100','Customer advance deposits','liability'),('2200','Accrued service delivery costs','liability'),('1100','Accounts receivable','asset'),('1200','Inventory','asset'),('2000','Tax payable','liability'),('3000','Opening capital','equity'),('4000','Sales revenue','income'),('4900','Stock adjustment income','income'),('5000','Cost of goods sold','expense'),('5100','Service delivery costs','expense'),('6100','Operating expenses','expense'),('6200','Stock shrinkage','expense')]
 @app.get('/api/pos/accounts')
 def accounts(request:Request):
     u,t,_=auth(request,{'owner'});

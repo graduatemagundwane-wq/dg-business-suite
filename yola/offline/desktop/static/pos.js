@@ -152,11 +152,111 @@ function showStockForm(p){
   };
   box.scrollIntoView({behavior:'smooth'});
 }
+
+async function customers(){
+  const {customers:list}=await api('pos/customers');
+  const overdue=list.filter(c=>c.overdue_cents>0),owed=list.reduce((n,c)=>n+(c.due_cents||0),0);
+  body(`<div class="row between"><p class="intro">Customer accounts, receivables, deposits and overdue balances.</p>
+      <button class="btn primary" id="new-customer">＋ Add customer</button></div>
+    ${overdue.length?`<div class="note" role="alert">⚠ ${overdue.length} customer(s) have overdue payments. Review and follow up.</div>`:''}
+    <div class="cards">${stat('Accounts',list.length)}${stat('Total receivables',fmt(owed))}${stat('Overdue',fmt(overdue.reduce((n,c)=>n+(c.overdue_cents||0),0)))}</div>
+    <section class="card" id="customer-form" hidden></section><section class="card" id="customer-payment-form" hidden></section>
+    <div class="tablewrap"><table><thead><tr><th>Customer</th><th>Due</th><th>Deposit held</th><th>Overdue</th><th>Action</th></tr></thead>
+      <tbody>${list.map(c=>`<tr><td><strong>${E(c.name)}</strong><div class="small muted">${E(c.phone||'')}</div></td>
+      <td>${fmt(c.due_cents)}</td><td>${fmt(c.deposit_cents)}</td>
+      <td><span class="tag ${c.overdue_cents>0?'low':''}">${fmt(c.overdue_cents)}</span></td>
+      <td><div class="row"><button class="btn" data-account="${E(c.id)}">Statement</button><button class="btn" data-edit-customer="${E(c.id)}">Edit</button>
+      <button class="btn primary" data-settle="${E(c.id)}">Payment / deposit</button></div></td></tr>`).join('')}</tbody></table>
+      ${list.length?'':'<div class="empty">Create a customer to issue credit.</div>'}</div>`);
+  $('new-customer').onclick=()=>showCustomerForm();
+  document.querySelectorAll('[data-edit-customer]').forEach(b=>b.onclick=()=>showCustomerForm(list.find(c=>c.id===b.dataset.editCustomer)));
+  document.querySelectorAll('[data-account]').forEach(b=>b.onclick=()=>showCustomerStatement(b.dataset.account));
+  document.querySelectorAll('[data-settle]').forEach(b=>b.onclick=()=>showCustomerSettlement(list.find(c=>c.id===b.dataset.settle)));
+}
+function showCustomerForm(p=null){
+  const box=$('customer-form');box.hidden=false;
+  box.innerHTML=`<h2>${p?'Edit customer':'New customer account'}</h2><form id="customer-editor"><div class="formgrid">
+     ${field('name','Customer name','text','required maxlength="140"')}
+     ${field('phone','Phone','tel','maxlength="50"')}
+     ${field('email','Email','email','maxlength="200"')}
+     ${field('credit_limit','Credit limit USD (0 = no limit)','number','min="0" step="0.01"')}
+     ${field('terms_days','Payment due after (days)','number','min="0" max="365" step="1"')}
+     </div><button class="btn primary">Save customer</button></form>`;
+  const form=$('customer-editor');
+  for(const [k,v] of Object.entries({name:p?.name||'',phone:p?.phone||'',email:p?.email||'',
+     credit_limit:((p?.credit_limit_cents||0)/100).toFixed(2),terms_days:p?.terms_days??30}))
+    form.elements[k].value=v;
+  form.onsubmit=async ev=>{ev.preventDefault();const v=Object.fromEntries(new FormData(form));
+    try{await api('pos/customer','POST',{id:p?.id||undefined,name:v.name,phone:v.phone,email:v.email,
+      credit_limit_cents:Math.round(Number(v.credit_limit||0)*100),terms_days:Number(v.terms_days)});
+      flash('Customer saved.');await customers()}catch(e){flash(e.message,true)}};
+  box.scrollIntoView({behavior:'smooth'});
+}
+async function showCustomerStatement(id){
+  try{
+    const s=await api('pos/customer?id='+encodeURIComponent(id)),box=$('customer-form');
+    box.hidden=false;
+    box.innerHTML=`<div class="row between"><h2>Statement: ${E(s.customer.name)}</h2><button class="btn" id="close-statement">Close</button></div>
+      <div class="cards">${stat('Outstanding',fmt(s.due_cents))}${stat('Deposits',fmt(s.deposit_cents))}${stat('Overdue',fmt(s.overdue_cents))}</div>
+      <h3>Credit invoices</h3><div class="tablewrap"><table><thead><tr><th>Sale</th><th>Due date</th><th>Charged</th><th>Remaining</th></tr></thead>
+      <tbody>${s.sales.map(x=>`<tr><td>#${E(x.sale_number)}</td><td>${E(x.due_date||'—')}</td><td>${fmt(x.total_cents)}</td><td>${fmt(Math.max(0,x.remaining_cents))}</td></tr>`).join('')}</tbody></table></div>
+      <h3>Receipts and deposits</h3><div class="tablewrap"><table><thead><tr><th>Type</th><th>Amount</th><th>Date</th></tr></thead>
+      <tbody>${s.payments.map(x=>`<tr><td>${E(x.kind)}</td><td>${fmt(x.amount_cents)}</td><td>${new Date(x.created_at).toLocaleString('en-ZW')}</td></tr>`).join('')}</tbody></table></div>`;
+    $('close-statement').onclick=()=>{box.hidden=true};box.scrollIntoView({behavior:'smooth'})
+  }catch(e){flash(e.message,true)}
+}
+function showCustomerSettlement(p){
+  const box=$('customer-payment-form');box.hidden=false;
+  box.innerHTML=`<h2>Customer payment — ${E(p.name)}</h2><p class="intro">Due: ${fmt(p.due_cents)}. Deposit held: ${fmt(p.deposit_cents)}.</p>
+    <form id="settleform"><div class="formgrid">
+    <label class="field">Transaction<select name="kind"><option value="payment">Receive payment on dues</option>
+      <option value="deposit">Receive advance deposit</option><option value="apply_deposit">Apply existing deposit to dues</option></select></label>
+    ${field('amount','Amount USD','number','required min="0.01" step="0.01"')}
+    <label class="field">Tender<select name="payment_method"><option value="cash">Cash</option><option value="bank">Bank</option>
+    <option value="mobile">Mobile money</option><option value="card">Card</option></select></label>
+    ${field('reference','Receipt / transaction reference','text','maxlength="160"')}</div>
+    <button class="btn primary">Record transaction</button></form>
+    <p class="small muted">Payments reduce receivables; deposits remain liabilities until allocated. Money must be received externally first.</p>`;
+  $('settleform').elements.kind.onchange=()=>{
+    const apply=$('settleform').elements.kind.value==='apply_deposit';
+    $('settleform').elements.payment_method.disabled=apply;
+  };
+  $('settleform').onsubmit=async ev=>{
+    ev.preventDefault();const v=Object.fromEntries(new FormData(ev.target));
+    if(!confirm('Confirm '+v.kind+' of $'+v.amount+' for '+p.name+'?'))return;
+    try{const key=crypto.randomUUID();await api('pos/customer/settle','POST',{customer_id:p.id,kind:v.kind,
+      amount_cents:Math.round(Number(v.amount)*100),payment_method:v.payment_method||'deposit',
+      reference:v.reference,idempotency_key:key});flash('Customer transaction saved and reconciled.');await customers();
+    }catch(e){flash(e.message,true)}
+  };
+  box.scrollIntoView({behavior:'smooth'});
+}
+
 async function sales(){const {sales:list}=await api('pos/sales');body(`<div class="row between" style="margin-bottom:20px"><p class="intro">${user.role==='worker'?'Only transactions you completed.':'Recent transactions for your business.'}</p><button class="btn primary" id="new">New sale</button></div><div class="tablewrap"><table><thead><tr><th>Receipt</th><th>Cashier</th><th>Date</th><th>Payment</th><th>Amount</th><th>Action</th></tr></thead><tbody>${list.map(s=>`<tr><td><strong>#${E(s.sale_number)}</strong></td><td>${E(s.cashier_name)}</td><td>${new Date(s.created_at).toLocaleString('en-ZW')}</td><td>${E(s.payment_method)}</td><td><strong>${fmt(s.total_cents)}</strong></td><td>${user.role==='worker'?'':`<button class="btn ${s.refunded?'light':'warn'}" ${s.refunded?'disabled':''} data-refund="${E(s.id)}">${s.refunded?'Refunded':'Record refund'}</button>`}<button class="btn" data-receipt="${E(s.id)}">Receipt</button></td></tr>`).join('')}</tbody></table>${!list.length?'<div class="empty">No sales recorded yet.</div>':''}</div>`);$('new').onclick=()=>go('sell');document.querySelectorAll('[data-receipt]').forEach(b=>b.onclick=()=>receipt(b.dataset.receipt));document.querySelectorAll('[data-refund]').forEach(btn=>btn.onclick=async()=>{const sale=list.find(x=>x.id===btn.dataset.refund);const reason=prompt('Reason for refund of '+fmt(sale.total_cents)+' (this records the refund but does NOT transfer money):');if(!reason)return;const restock=confirm('Are the items physically returned and resellable? OK = put back in stock, Cancel = do not restock.');if(!confirm('Confirm refund entry for receipt #'+sale.sale_number+'? Only proceed after the customer is refunded externally.'))return;try{await api('pos/refund','POST',{sale_id:sale.id,reason,restock});flash('Refund recorded and ledger reversed.');await sales()}catch(e){flash(e.message,true)}})}
 async function expenses(){const {expenses:list}=await api('pos/expenses');body(`<div class="cols"><section class="card"><h2>Record an expense</h2><p class="intro">Every expense automatically creates balanced accounting entries.</p><form id="expenseform"><div class="formgrid">${field('title','What was paid for?','text','required maxlength="160"')}${field('amount','Amount (USD)','number','required min="0.01" step="0.01"')}<label class="field">Paid from<select name="payment_method"><option value="cash">Cash</option><option value="bank">Bank</option><option value="mobile">Mobile money</option><option value="card">Card</option></select></label></div><button class="btn primary">Record expense</button></form></section><section class="card"><h2>Recent expenses</h2>${list.map(x=>`<div class="cartline"><div><strong>${E(x.title)}</strong><div class="muted small">${new Date(x.created_at).toLocaleDateString('en-ZW')} · ${E(x.payment_method)}</div></div><strong>${fmt(x.amount_cents)}</strong></div>`).join('')||'<div class="empty">No expenses recorded.</div>'}</section></div>`);$('expenseform').onsubmit=async ev=>{ev.preventDefault();const v=Object.fromEntries(new FormData(ev.target));try{await api('pos/expense','POST',{title:v.title,amount_cents:Math.round(Number(v.amount)*100),payment_method:v.payment_method});flash('Expense saved to the general ledger');await expenses()}catch(e){flash(e.message,true)}}}
 async function accounting(){const d=await api('pos/accounts'),p=d.profit_and_loss,b=d.balance_sheet,t=d.trial_balance;body(`<div class="note">Double-entry accounting is recorded automatically from checkout, stock movements and operating expenses. Full bank reconciliation, invoicing and tax filing integrations are still under development.</div><section class="cards">${stat('Sales & income',fmt(p.revenue_cents),'Income accounts')}${stat('Total expenses',fmt(p.expense_cents),'COGS and operating expenses')}${stat('Net profit',fmt(p.profit_cents),'Revenue less expenses')}${stat('Total assets',fmt(b.assets_cents),'Cash, bank and stock')}</section><div class="cols"><div class="card"><h2>Chart of accounts / trial balance</h2><div class="tablewrap"><table class="chart-table"><thead><tr><th>Account</th><th>Debit</th><th>Credit</th></tr></thead><tbody>${d.accounts.map(a=>`<tr><td>${E(a.code)} · ${E(a.name)}</td><td>${fmt(a.debit_cents)}</td><td>${fmt(a.credit_cents)}</td></tr>`).join('')}<tr><td><strong>Total</strong></td><td><strong>${fmt(t.debits_cents)}</strong></td><td><strong>${fmt(t.credits_cents)}</strong></td></tr></tbody></table></div><p class="small" style="color:${t.balanced?'var(--green)':'var(--red)'}">${t.balanced?'✓ Trial balance reconciled':'Accounting entries do not reconcile'}</p></div><div class="card"><h2>Balance sheet</h2>${[['Assets',b.assets_cents],['Liabilities',b.liabilities_cents],['Owner capital',b.equity_cents],['Current earnings',b.retained_earnings_cents]].map(([k,v])=>`<div class="cartline"><span>${E(k)}</span><strong>${fmt(v)}</strong></div>`).join('')}<p class="small" style="color:${b.balanced?'var(--green)':'var(--red)'}">${b.balanced?'✓ Balance sheet reconciled':'Balance sheet does not reconcile'}</p><button class="btn" id="export">Export account balances (CSV)</button></div></div>`);$('export').onclick=()=>{const csv=['Account,Name,Type,Debit cents,Credit cents',...d.accounts.map(a=>[a.code,'"'+a.name.replaceAll('"','""')+'"',a.type,a.debit_cents,a.credit_cents].join(','))].join('\r\n'),blob=new Blob([csv],{type:'text/csv'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='Yola-trial-balance.csv';a.click();URL.revokeObjectURL(url)}}
-async function team(){const {staff}=await api('staff');body(`<section class="card"><h2>People & permissions</h2><p class="intro">Each staff member chooses their own password using a one-time invitation. Worker accounts can sell, but cannot access accounting or change stock.</p><div class="tablewrap"><table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th></tr></thead><tbody>${staff.map(p=>`<tr><td>${E(p.name)}</td><td>${E(p.email)}</td><td>${E(p.role)}</td><td><span class="tag ${p.active?'':'low'}">${p.active?'Active':'Inactive'}</span></td></tr>`).join('')}</tbody></table></div><form id="inviteform" style="margin-top:23px"><div class="row"><label class="field flexgrow">Invite a new team member<select name="role"><option value="worker">Worker — Sales only</option><option value="manager">Manager — Operations, no accounting</option></select></label><button class="btn primary" type="submit">Generate private invitation</button></div></form><div id="invite-output"></div></section>`);$('inviteform').onsubmit=async ev=>{ev.preventDefault();try{let r=await api('invites','POST',{role:new FormData(ev.target).get('role')});let n=$('invite-output');n.innerHTML='<p class="muted small">Copy this private invitation link (expires in 48 hours):</p><input id="invite-link" readonly class="field" style="width:100%;padding:13px;background:#0e2238;color:#fff;border-radius:10px;border:1px solid #41617e"><button class="btn" id="copyinv">Copy link</button>';$('invite-link').value=r.inviteUrl;$('copyinv').onclick=()=>navigator.clipboard.writeText(r.inviteUrl).then(()=>flash('Invitation copied'))}catch(e){flash(e.message,true)}}}
 
+async function team(){
+  const {staff:people}=await api('staff');
+  body(`<section class="card"><h2>Staff access control</h2>
+  <p class="intro">Access is granted by the Yola cloud account role. The owner can disable a staff account here or revoke its allowed operations on this PC. Cloud invitations need an online connection.</p>
+  <div class="tablewrap"><table><thead><tr><th>Staff</th><th>Cloud role</th><th>Access</th><th>Allowed actions</th><th>Save</th></tr></thead>
+  <tbody>${people.map(p=>`<tr data-staff-row="${E(p.id)}"><td><strong>${E(p.name)}</strong><div class="small muted">${E(p.email)}</div></td>
+  <td>${E(p.role)}</td><td>${p.role==='owner'?'<b>Owner</b>':`<label><input type="checkbox" name="enabled" ${p.access_enabled?'checked':''}> Enabled</label>`}</td>
+  <td>${p.role==='owner'?'Full access':p.role==='worker'?'Sales only':[['inventory','Stock'],['customers','Customer accounts'],['credit','Credit sales'],['refund','Refunds']].map(([k,v])=>`<label style="display:block"><input type="checkbox" name="${k}" ${p.permissions[k]!==false?'checked':''}> ${v}</label>`).join('')}</td>
+  <td>${p.role==='owner'?'—':`<button class="btn primary" data-save-staff="${E(p.id)}">Save</button>`}</td></tr>`).join('')}</tbody></table></div></section>`);
+  document.querySelectorAll('[data-save-staff]').forEach(btn=>btn.onclick=async()=>{
+    const p=people.find(x=>x.id===btn.dataset.saveStaff),row=btn.closest('tr');
+    const permissions={};
+    if(p.role==='manager')for(const name of ['inventory','customers','credit','refund'])
+      permissions[name]=row.querySelector('[name="'+name+'"]').checked;
+    const enabled=row.querySelector('[name=enabled]').checked;
+    if(!confirm('Update access for '+p.name+'?'))return;
+    try{await api('staff/access','POST',{email:p.email,enabled,permissions});
+      flash('Staff restrictions saved on this PC.');await team()
+    }catch(e){flash(e.message,true)}
+  })
+}
 async function documents(){
  const {documents:list}=await api('pos/documents');
  body(`<div class="row between"><p class="intro">Prepare beautiful quotations and invoices without changing sales, stock or accounting totals.</p><button class="btn primary" id="create-document">＋ New document</button></div><section class="card" id="doc-editor" hidden></section><div class="tablewrap"><table><thead><tr><th>Document</th><th>Customer</th><th>Date</th><th>Total</th><th>Action</th></tr></thead><tbody>${list.map(d=>`<tr><td><strong>${E(d.kind.toUpperCase())} #${E(d.document_no)}</strong></td><td>${E(d.customer_name)}</td><td>${new Date(d.created_at).toLocaleDateString('en-ZW')}</td><td>${fmt(d.total_cents)}</td><td><button class="btn" data-doc="${E(d.id)}">Preview & print</button></td></tr>`).join('')}</tbody></table>${list.length?'':'<div class="empty">No quotations or invoices. Create one without touching sales.</div>'}</div>`);

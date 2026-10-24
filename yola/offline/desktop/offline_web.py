@@ -360,7 +360,12 @@ def summary(request:Request):
         args=[t,today]
         if u['role']=='worker':query+=' AND cashier_id=?';args.append(u['id'])
         counts=one(c,query,*args)
-        if u['role']!='worker':counts.update(one(c,"SELECT count(*) AS products,coalesce(sum(CASE WHEN kind='stock' AND stock_qty<=min_stock THEN 1 ELSE 0 END),0) AS low_stock FROM yola_local_products WHERE tenant=? AND active=1",t))
+        if u['role']!='worker':
+            counts.update(one(c,"SELECT count(*) AS products,coalesce(sum(CASE WHEN kind='stock' AND stock_qty<=min_stock THEN 1 ELSE 0 END),0) AS low_stock FROM yola_local_products WHERE tenant=? AND active=1",t))
+            customers=rows(c,'SELECT id FROM yola_local_customers WHERE tenant=? AND active=1',t)
+            pending=[customer_snapshot(c,t,item['id']) for item in customers]
+            counts['overdue_customers']=sum(int(x['overdue_cents']>0) for x in pending)
+            counts['overdue_cents']=sum(x['overdue_cents'] for x in pending)
     return {'summary':counts}
 
 @app.post('/api/pos/product')

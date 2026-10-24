@@ -360,7 +360,7 @@ def summary(request:Request):
         args=[t,today]
         if u['role']=='worker':query+=' AND cashier_id=?';args.append(u['id'])
         counts=one(c,query,*args)
-        if u['role']!='worker':counts.update(one(c,'SELECT count(*) AS products,coalesce(sum(CASE WHEN kind='stock' AND stock_qty<=min_stock THEN 1 ELSE 0 END),0) AS low_stock FROM yola_local_products WHERE tenant=? AND active=1',t))
+        if u['role']!='worker':counts.update(one(c,"SELECT count(*) AS products,coalesce(sum(CASE WHEN kind='stock' AND stock_qty<=min_stock THEN 1 ELSE 0 END),0) AS low_stock FROM yola_local_products WHERE tenant=? AND active=1",t))
     return {'summary':counts}
 
 @app.post('/api/pos/product')

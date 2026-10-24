@@ -816,7 +816,46 @@ def retry_alerts(request:Request):
 def staff(request:Request):
     u,t,_=auth(request,{'owner'});
     with db() as c:
-        return {'staff':rows(c,'SELECT id,name,email,role,active FROM yola_local_accounts WHERE tenant=? ORDER BY name',t)}
+        staff=rows(c,'''SELECT a.id,a.name,a.email,a.role,a.active,
+                     coalesce(r.enabled,1) AS access_enabled,coalesce(r.permissions,'{}') AS permissions
+                     FROM yola_local_accounts a
+                     LEFT JOIN yola_local_staff_rules r ON r.tenant=a.tenant AND r.email=a.email
+                     WHERE a.tenant=? ORDER BY a.name''',t)
+        for person in staff:person['permissions']=json.loads(person['permissions'])
+        return {'staff':staff}
+
+@app.post('/api/staff/access')
+async def staff_access(request:Request):
+    """An owner may revoke staff access or narrow their existing cloud role.
+    This cannot create accounts or elevate a worker to a manager.
+    """
+    owner,tenant,_=auth(request,{'owner'})
+    b=await request.json()
+    email=str(b.get('email') or '').strip().lower()
+    active=b.get('enabled')
+    if not isinstance(active,bool):raise HTTPException(422,'Enabled must be true or false')
+    permissions=b.get('permissions',{})
+    if not isinstance(permissions,dict) or set(permissions)-{'inventory','customers','credit','refund'}:
+        raise HTTPException(422,'Unsupported staff permissions')
+    if any(not isinstance(value,bool) for value in permissions.values()):
+        raise HTTPException(422,'Permissions must be boolean')
+    with db() as c:
+        staff=one(c,'SELECT id,role FROM yola_local_accounts WHERE tenant=? AND email=?',tenant,email)
+        if not staff:raise HTTPException(404,'Staff account not enrolled on this PC')
+        if staff['role']=='owner' or staff['id']==owner['id']:
+            raise HTTPException(403,'Owner account cannot be disabled or restricted here')
+        if staff['role']=='worker' and any(permissions.values()):
+            raise HTTPException(422,'Worker permissions cannot exceed the assigned sales-only cloud role')
+        c.execute('''INSERT INTO yola_local_staff_rules(tenant,email,enabled,permissions,updated_by,updated_at)
+            VALUES(?,?,?,?,?,?) ON CONFLICT(tenant,email) DO UPDATE SET
+            enabled=excluded.enabled,permissions=excluded.permissions,updated_by=excluded.updated_by,
+            updated_at=excluded.updated_at''',
+            (tenant,email,int(active),json.dumps(permissions),owner['id'],now()))
+        if not active:
+            c.execute('''DELETE FROM yola_local_sessions WHERE account_id=?''',(staff['id'],))
+        event(c,tenant,'staff.access',{'email':email,'enabled':active,'permissions':permissions,'actor':owner['id']})
+    return {'success':True}
+
 
 @app.post('/api/invites')
 def offline_invites(request:Request):

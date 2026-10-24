@@ -42,6 +42,20 @@ jobs:
                   if p.is_absolute() or '..' in p.parts: raise ValueError('Unsafe archive path')
               z.extractall('pash-operations/app')
           PY
+      - name: Apply TypeScript corrections found in first QA build
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          file=Path('pash-operations/app/mobile/App.tsx')
+          content=file.read_text()
+          old1=".concat([{text:'Cancel',onPress:()=>{}}])"
+          old2="{action?.id===item.id?"
+          if old1 not in content or old2 not in content:
+              raise RuntimeError('Expected source mismatch. Stop before building.')
+          content=content.replace(old1,".concat([{text:'Cancel',onPress:async()=>{}}])")
+          content=content.replace(old2,"{action && action.id===item.id?")
+          file.write_text(content)
+          PY
       - name: Install Expo dependencies
         working-directory: pash-operations/app/mobile
         run: npm install --no-audit --no-fund

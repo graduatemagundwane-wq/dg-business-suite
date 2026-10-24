@@ -1,0 +1,75 @@
+name: PASH Auto Android QA APK
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - pash-auto-operations-qa-20261024
+    paths:
+      - pash-operations/**
+      - .github/workflows/pash-android-apk.yml
+permissions:
+  contents: read
+jobs:
+  android-debug-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      EXPO_PUBLIC_API_URL: https://pash-auto-operations-qa.onrender.com
+      EXPO_PUBLIC_ORGANIZATION_ID: "1"
+      CI: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+      - name: Extract PASH app source (isolated staging bundle)
+        run: |
+          python3 - <<'PY'
+          import base64, io, zipfile
+          from pathlib import Path
+          data = base64.b64decode(Path('pash-operations/source-v0.5.0.zip.b64').read_text().strip())
+          with zipfile.ZipFile(io.BytesIO(data)) as z:
+              for info in z.infolist():
+                  p = Path(info.filename)
+                  if p.is_absolute() or '..' in p.parts: raise ValueError('Unsafe archive path')
+              z.extractall('pash-operations/app')
+          PY
+      - name: Install Expo dependencies
+        working-directory: pash-operations/app/mobile
+        run: npm install --no-audit --no-fund
+      - name: Verify barcode utility
+        working-directory: pash-operations/app/mobile
+        run: node --test tests/scan.test.js
+      - name: TypeScript typecheck
+        working-directory: pash-operations/app/mobile
+        run: npx tsc --noEmit
+      - name: Generate Android native project
+        working-directory: pash-operations/app/mobile
+        run: npx expo prebuild --platform android --non-interactive --no-install
+      - name: Compile QA debug APK and sign with Android debug key
+        working-directory: pash-operations/app/mobile/android
+        run: |
+          chmod +x ./gradlew
+          ./gradlew --no-daemon --stacktrace assembleDebug
+      - name: Verify built APK exists and has a signature
+        working-directory: pash-operations/app/mobile
+        run: |
+          APK=android/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          ls -lh "$APK"
+          "$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)/apksigner" verify --verbose "$APK"
+          sha256sum "$APK" > android-debug-apk.sha256
+      - name: Upload APK and checksum
+        uses: actions/upload-artifact@v4
+        with:
+          name: PASH-Auto-Operations-Android-QA
+          path: |
+            pash-operations/app/mobile/android/app/build/outputs/apk/debug/app-debug.apk
+            pash-operations/app/mobile/android-debug-apk.sha256
+          if-no-files-found: error
+          retention-days: 30

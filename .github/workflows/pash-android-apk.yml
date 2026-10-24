@@ -87,7 +87,7 @@ jobs:
           exp["android"]["versionCode"]=6
           exp["android"]["adaptiveIcon"]={"foregroundImage":"./assets/adaptive-icon.png","backgroundColor":"#FFFFFF"}
           exp["splash"]={"image":"./assets/splash.png","resizeMode":"contain","backgroundColor":"#FFFFFF"}
-          p.write_text(json.dumps(cfg,indent=2)+"\\n")
+          p.write_text(json.dumps(cfg,indent=2))
           assert (assets/"icon.png").stat().st_size>10000
           print("Official PASH Auto EV & Hybrid Centre logo configured as launcher icon")
           PY

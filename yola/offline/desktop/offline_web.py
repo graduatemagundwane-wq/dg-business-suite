@@ -107,6 +107,26 @@ def sql_init():
           payload TEXT NOT NULL, created_at TEXT NOT NULL,
           synced INTEGER NOT NULL DEFAULT 0,
           uploaded_at TEXT, last_error TEXT);
+        CREATE TABLE IF NOT EXISTS yola_local_customers (
+          id TEXT PRIMARY KEY, tenant TEXT NOT NULL, name TEXT NOT NULL,
+          phone TEXT, email TEXT, credit_limit_cents INTEGER NOT NULL DEFAULT 0,
+          terms_days INTEGER NOT NULL DEFAULT 30, active INTEGER NOT NULL DEFAULT 1,
+          created_at TEXT NOT NULL);
+        CREATE INDEX IF NOT EXISTS yola_l_customer_tenant ON yola_local_customers(tenant,name);
+        CREATE TABLE IF NOT EXISTS yola_local_customer_cash_entries (
+          id TEXT PRIMARY KEY, tenant TEXT NOT NULL, customer_id TEXT NOT NULL,
+          kind TEXT NOT NULL CHECK(kind IN ('payment','deposit','apply_deposit')),
+          amount_cents INTEGER NOT NULL CHECK(amount_cents>0),
+          payment_method TEXT NOT NULL, reference TEXT, idempotency_key TEXT NOT NULL,
+          created_by TEXT NOT NULL, created_at TEXT NOT NULL, UNIQUE(tenant,idempotency_key));
+        CREATE TABLE IF NOT EXISTS yola_local_customer_allocations (
+          id TEXT PRIMARY KEY, tenant TEXT NOT NULL, entry_id TEXT NOT NULL,
+          sale_id TEXT NOT NULL, amount_cents INTEGER NOT NULL CHECK(amount_cents>0),
+          UNIQUE(tenant,entry_id,sale_id));
+        CREATE TABLE IF NOT EXISTS yola_local_staff_rules (
+          tenant TEXT NOT NULL, email TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1,
+          permissions TEXT NOT NULL DEFAULT '{}', updated_by TEXT, updated_at TEXT NOT NULL,
+          PRIMARY KEY(tenant,email));
         CREATE INDEX IF NOT EXISTS yola_l_product_tenant ON yola_local_products(tenant,active,name);
         CREATE INDEX IF NOT EXISTS yola_l_sale_tenant ON yola_local_sales(tenant,created_at);
         CREATE INDEX IF NOT EXISTS yola_l_event_unsynced ON yola_local_events(tenant,synced);
@@ -115,6 +135,17 @@ def sql_init():
         existing={r[1] for r in c.execute('PRAGMA table_info(yola_local_events)')}
         for col in ('uploaded_at','last_error'):
             if col not in existing:c.execute(f'ALTER TABLE yola_local_events ADD COLUMN {col} TEXT')
+        # Safe additive migrations: older client databases and receipts are preserved.
+        additions={
+            'yola_local_products':[('quality',"TEXT NOT NULL DEFAULT ''"),('kind',"TEXT NOT NULL DEFAULT 'stock'")],
+            'yola_local_sale_lines':[('kind',"TEXT NOT NULL DEFAULT 'stock'")],
+            'yola_local_sales':[('customer_id',"TEXT"),('due_date',"TEXT")],
+        }
+        for table,columns in additions.items():
+            existing={row[1] for row in c.execute(f'PRAGMA table_info({table})')}
+            for col,definition in columns:
+                if col not in existing:c.execute(f'ALTER TABLE {table} ADD COLUMN {col} {definition}')
+
 
 sql_init()
 
@@ -150,6 +181,8 @@ def cache_verified_staff(tenant,license_info,email,password):
         raise HTTPException(403,'Unsupported account role')
     salt,digest=new_password(password)
     with db() as c:
+        policy=one(c,'SELECT enabled FROM yola_local_staff_rules WHERE tenant=? AND email=?',tenant,email.lower())
+        if policy and not policy['enabled']:raise HTTPException(403,'Staff access disabled by the business owner')
         prior=one(c,'SELECT id FROM yola_local_accounts WHERE tenant=? AND lower(email)=?',tenant,email.lower())
         account_id=prior['id'] if prior else uid()
         c.execute('''INSERT INTO yola_local_accounts(id,tenant,email,name,role,pass_salt,pass_hash,active)
@@ -168,7 +201,7 @@ def new_password(password):
     return salt,hash_password(password,salt)
 
 
-def auth(request,allowed=None):
+def auth(request,allowed=None,permission=None):
     tenant,license_info=lease()
     token=request.cookies.get('yola_offline_session','')
     if not token:raise HTTPException(401,'Please sign in')
@@ -177,6 +210,16 @@ def auth(request,allowed=None):
             WHERE s.token_hash=? AND s.expires_at>? AND a.active=1 AND a.tenant=?""",phash(token),now(),tenant)
     if not u:raise HTTPException(401,'Please sign in')
     if allowed and u['role'] not in allowed:raise HTTPException(403,'This account does not have permission')
+    if u['role']!='owner':
+        with db() as c:
+            rule=one(c,'SELECT enabled,permissions FROM yola_local_staff_rules WHERE tenant=? AND email=?',tenant,u['email'])
+        if rule and not rule['enabled']:raise HTTPException(403,'Staff access disabled')
+        if permission:
+            defaults={'manager':{'inventory','refund','customers','credit'},'worker':set()}
+            default=permission in defaults.get(u['role'],set())
+            effective=json.loads(rule['permissions']).get(permission,default) if rule else default
+            # Owner rules can only revoke the default capabilities, never grant wider access.
+            if not (default and effective is True):raise HTTPException(403,'Your account is restricted from '+permission)
     return u,tenant,license_info
 
 
@@ -193,7 +236,7 @@ def event(c,tenant,kind,obj):
 
 
 def low_stock(c,tenant,p,old_count,new_count):
-    if old_count>p['min_stock'] and new_count<=p['min_stock']:
+    if p.get('kind','stock')!='service' and old_count>p['min_stock'] and new_count<=p['min_stock']:
         c.execute('INSERT INTO yola_local_alerts VALUES(?,?,?,?,?,?)',(uid(),tenant,p['id'],'queued',json.dumps({'name':p['name'],'sku':p['sku'],'stock':new_count}),now()))
 
 
@@ -257,6 +300,8 @@ async def login(request:Request,response:Response):
         response.set_cookie('yola_setup',token,httponly=True,samesite='strict',max_age=7200)
         return result
     with db() as c:
+        rule=one(c,'SELECT enabled FROM yola_local_staff_rules WHERE tenant=? AND email=?',tenant,email)
+        if rule and not rule['enabled']:raise HTTPException(403,'Staff access disabled by owner')
         u=one(c,'SELECT * FROM yola_local_accounts WHERE tenant=? AND lower(email)=? AND active=1',tenant,email)
     if not u or not hmac.compare_digest(hash_password(password,u['pass_salt']),u['pass_hash']):
         # New user or password change: contact the actual Yola server once.
@@ -297,9 +342,13 @@ def registration_guide():
 def products(request:Request):
     u,t,_=auth(request,{'owner','manager','worker'})
     with db() as c:
-        products=rows(c,'SELECT * FROM yola_local_products WHERE tenant=? AND active=1 ORDER BY name LIMIT 1000',t)
+        products=rows(c,'SELECT * FROM yola_local_products WHERE tenant=? AND active=1 ORDER BY category,name LIMIT 1000',t)
+    for p in products:
+        p['margin_percent']=round(100*(p['price_cents']-p['cost_cents'])/p['price_cents'],2) if p['price_cents'] else None
     if u['role']=='worker':
-        for p in products:p.pop('cost_cents',None)
+        for p in products:
+            p.pop('cost_cents',None)
+            p.pop('margin_percent',None)
     return {'products':products}
 
 @app.get('/api/pos/summary')
@@ -311,29 +360,81 @@ def summary(request:Request):
         args=[t,today]
         if u['role']=='worker':query+=' AND cashier_id=?';args.append(u['id'])
         counts=one(c,query,*args)
-        if u['role']!='worker':counts.update(one(c,'SELECT count(*) AS products,coalesce(sum(CASE WHEN stock_qty<=min_stock THEN 1 ELSE 0 END),0) AS low_stock FROM yola_local_products WHERE tenant=? AND active=1',t))
+        if u['role']!='worker':
+            counts.update(one(c,"SELECT count(*) AS products,coalesce(sum(CASE WHEN kind='stock' AND stock_qty<=min_stock THEN 1 ELSE 0 END),0) AS low_stock FROM yola_local_products WHERE tenant=? AND active=1",t))
+            customers=rows(c,'SELECT id FROM yola_local_customers WHERE tenant=? AND active=1',t)
+            pending=[customer_snapshot(c,t,item['id']) for item in customers]
+            counts['overdue_customers']=sum(int(x['overdue_cents']>0) for x in pending)
+            counts['overdue_cents']=sum(x['overdue_cents'] for x in pending)
     return {'summary':counts}
 
 @app.post('/api/pos/product')
 async def product(request:Request):
-    u,t,_=auth(request,{'owner','manager'});b=await request.json();name=str(b.get('name','')).strip()[:140]
+    u,t,_=auth(request,{'owner','manager'},'inventory')
+    b=await request.json()
+    name=str(b.get('name') or '').strip()[:140]
     if not name:raise HTTPException(422,'Product name required')
-    price=cents(b.get('price_cents',-1));cost=cents(b.get('cost_cents',0));initial=cents(b.get('stock_qty',0));min_stock=cents(b.get('min_stock',5));tax=cents(b.get('tax_bps',0))
+    kind=b.get('kind','stock')
+    if kind not in ('stock','service'):raise HTTPException(422,'Invalid item type')
+    price=cents(b.get('price_cents',-1))
+    cost=cents(b.get('cost_cents',0))
+    initial=cents(b.get('stock_qty',0))
+    min_stock=cents(b.get('min_stock',5))
+    tax=cents(b.get('tax_bps',0))
     if tax>3000:raise HTTPException(422,'Invalid tax')
+    if kind=='service' and initial:raise HTTPException(422,'Services cannot have stock quantities')
     p={'id':uid(),'tenant':t,'name':name,'sku':str(b.get('sku','')).strip()[:70] or 'YL-'+secrets.token_hex(6).upper(),
-    'barcode':str(b.get('barcode') or ''),'category':str(b.get('category') or 'General'),'price_cents':price,'cost_cents':cost,'tax_bps':tax,'stock_qty':initial,'min_stock':min_stock,'active':1,'created_at':now()}
+       'barcode':str(b.get('barcode') or '')[:140],'category':str(b.get('category') or 'General').strip()[:100],
+       'quality':str(b.get('quality') or '').strip()[:120],'kind':kind,
+       'price_cents':price,'cost_cents':cost,'tax_bps':tax,'stock_qty':initial,'min_stock':min_stock,'active':1,'created_at':now()}
     try:
         with db() as c:
-            c.execute('INSERT INTO yola_local_products VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)',tuple(p.values()))
-            if initial*cost:journal(c,t,'opening_stock',p['id'],'Opening stock '+name,[('1200',initial*cost,0),('3000',0,initial*cost)])
+            c.execute('''INSERT INTO yola_local_products
+              (id,tenant,name,sku,barcode,category,quality,kind,price_cents,cost_cents,tax_bps,stock_qty,min_stock,active,created_at)
+              VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',tuple(p.values()))
+            if kind=='stock' and initial*cost:
+                journal(c,t,'opening_stock',p['id'],'Opening stock '+name,[('1200',initial*cost,0),('3000',0,initial*cost)])
             low_stock(c,t,p,min_stock+1,initial)
             event(c,t,'product.create',p)
     except sqlite3.IntegrityError:raise HTTPException(409,'SKU already registered')
-    return {'id':p['id']}
+    return {'id':p['id'],'margin_percent':round(100*(price-cost)/price,2) if price else None}
+
+
+@app.post('/api/pos/product/edit')
+async def edit_product(request:Request):
+    u,t,_=auth(request,{'owner','manager'},'inventory')
+    b=await request.json()
+    pid=str(b.get('product_id') or '')
+    allowed=('name','quality','category','barcode','price_cents','cost_cents','tax_bps','min_stock')
+    changes={}
+    for key in allowed:
+        if key not in b:continue
+        if key in ('price_cents','cost_cents','tax_bps','min_stock'):
+            changes[key]=cents(b[key])
+        else:
+            lengths={'name':140,'quality':120,'category':100,'barcode':140}
+            changes[key]=str(b[key] or '').strip()[:lengths[key]]
+    if not changes:raise HTTPException(422,'No valid changes')
+    if 'name' in changes and not changes['name']:raise HTTPException(422,'Item name required')
+    if 'category' in changes and not changes['category']:raise HTTPException(422,'Category required')
+    if changes.get('tax_bps',0)>3000:raise HTTPException(422,'Invalid tax')
+    with db() as c:
+        c.execute('BEGIN IMMEDIATE')
+        prior=one(c,'SELECT * FROM yola_local_products WHERE tenant=? AND id=? AND active=1',t,pid)
+        if not prior:raise HTTPException(404,'Item not found')
+        # Inventory quantities only change through stock adjustments (audited).
+        c.execute('UPDATE yola_local_products SET '+','.join(k+'=?' for k in changes)+' WHERE tenant=? AND id=?',
+                  (*changes.values(),t,pid))
+        updated=one(c,'SELECT * FROM yola_local_products WHERE tenant=? AND id=?',t,pid)
+        event(c,t,'product.edit',{'product_id':pid,'changed_fields':list(changes),'before':prior,'after':updated,'actor':u['id']})
+        if 'min_stock' in changes:low_stock(c,t,updated,prior['min_stock']+1,updated['stock_qty'])
+    return {'success':True,'product':updated,
+        'margin_percent':round(100*(updated['price_cents']-updated['cost_cents'])/updated['price_cents'],2) if updated['price_cents'] else None}
+
 
 @app.post('/api/pos/archive-product')
 async def archive(request:Request):
-    u,t,_=auth(request,{'owner','manager'});b=await request.json()
+    u,t,_=auth(request,{'owner','manager'},'inventory');b=await request.json()
     with db() as c:
         cur=c.execute('UPDATE yola_local_products SET active=0 WHERE id=? AND tenant=? AND active=1',(b.get('product_id'),t))
         if not cur.rowcount:raise HTTPException(404,'Product not found')
@@ -342,11 +443,12 @@ async def archive(request:Request):
 
 @app.post('/api/pos/stock')
 async def stock(request:Request):
-    u,t,_=auth(request,{'owner','manager'});b=await request.json();delta=b.get('delta')
+    u,t,_=auth(request,{'owner','manager'},'inventory');b=await request.json();delta=b.get('delta')
     if isinstance(delta,bool) or not isinstance(delta,int) or delta==0 or abs(delta)>100000:raise HTTPException(422,'Invalid stock adjustment')
     with db() as c:
         p=one(c,'SELECT * FROM yola_local_products WHERE id=? AND tenant=? AND active=1',b.get('product_id'),t)
         if not p:raise HTTPException(404,'Product not found')
+        if p.get('kind')=='service':raise HTTPException(422,'Service items do not have stock')
         if p['stock_qty']+delta<0:raise HTTPException(422,'Insufficient stock')
         c.execute('UPDATE yola_local_products SET stock_qty=stock_qty+? WHERE id=?',(delta,p['id']))
         low_stock(c,t,p,p['stock_qty'],p['stock_qty']+delta)
@@ -355,11 +457,149 @@ async def stock(request:Request):
         event(c,t,'stock.adjust',{'product_id':p['id'],'delta':delta,'reason':str(b.get('reason',''))[:140]})
     return {'success':True}
 
+def customer_snapshot(c,tenant,customer_id):
+    customer=one(c,'SELECT * FROM yola_local_customers WHERE tenant=? AND id=? AND active=1',tenant,customer_id)
+    if not customer:raise HTTPException(404,'Customer not found')
+    sales=rows(c,'''SELECT s.id,s.number AS sale_number,s.total_cents,s.due_date,s.created_at,
+        EXISTS(SELECT 1 FROM yola_local_refunds r WHERE r.tenant=s.tenant AND r.sale_id=s.id) AS refunded,
+        coalesce((SELECT sum(a.amount_cents) FROM yola_local_customer_allocations a
+          WHERE a.tenant=s.tenant AND a.sale_id=s.id),0) AS allocated_cents
+        FROM yola_local_sales s WHERE s.tenant=? AND s.customer_id=?
+        AND s.payment_method='credit' ORDER BY s.due_date,s.created_at''',tenant,customer_id)
+    total_balance=overdue=0
+    today=datetime.now(timezone.utc).date().isoformat()
+    for sale in sales:
+        sale['remaining_cents']=(0 if sale['refunded'] else sale['total_cents'])-sale['allocated_cents']
+        total_balance+=sale['remaining_cents']
+        if sale['due_date'] and sale['due_date']<today and sale['remaining_cents']>0:
+            overdue+=sale['remaining_cents']
+    money=rows(c,'''SELECT kind,coalesce(sum(amount_cents),0) AS amount FROM yola_local_customer_cash_entries
+        WHERE tenant=? AND customer_id=? GROUP BY kind''',tenant,customer_id)
+    kinds={x['kind']:x['amount'] for x in money}
+    deposit=kinds.get('deposit',0)-kinds.get('apply_deposit',0)
+    return {'customer':customer,'sales':sales,'balance_cents':total_balance,
+            'due_cents':max(0,total_balance),'customer_credit_cents':max(0,-total_balance),
+            'deposit_cents':deposit,'overdue_cents':overdue}
+
+
+def _allocate_customer_credit(c,tenant,customer_id,entry_id,amount):
+    remaining=amount
+    snapshot=customer_snapshot(c,tenant,customer_id)
+    for sale in snapshot['sales']:
+        open_amount=max(0,sale['remaining_cents'])
+        applying=min(open_amount,remaining)
+        if applying:
+            c.execute('''INSERT INTO yola_local_customer_allocations VALUES(?,?,?,?,?)''',
+                (uid(),tenant,entry_id,sale['id'],applying))
+            remaining-=applying
+        if not remaining:break
+    if remaining:raise HTTPException(409,'Amount exceeds outstanding invoices')
+
+
+@app.get('/api/pos/customers')
+def customers(request:Request):
+    u,t,_=auth(request,{'owner','manager','worker'})
+    with db() as c:
+        listing=rows(c,'SELECT * FROM yola_local_customers WHERE tenant=? AND active=1 ORDER BY name',t)
+        if u['role']=='worker':
+            return {'customers':[{'id':v['id'],'name':v['name']} for v in listing]}
+        return {'customers':[{**v,**{k:value for k,value in customer_snapshot(c,t,v['id']).items()
+                   if k in ('due_cents','deposit_cents','overdue_cents','customer_credit_cents')}}
+                   for v in listing]}
+
+
+@app.get('/api/pos/customer')
+def customer_detail(request:Request,id:str):
+    u,t,_=auth(request,{'owner','manager'},'customers')
+    with db() as c:
+        result=customer_snapshot(c,t,id)
+        result['payments']=rows(c,'''SELECT kind,amount_cents,payment_method,reference,created_at
+            FROM yola_local_customer_cash_entries WHERE tenant=? AND customer_id=?
+            ORDER BY created_at DESC LIMIT 150''',t,id)
+        return result
+
+
+@app.post('/api/pos/customer')
+async def save_customer(request:Request):
+    u,t,_=auth(request,{'owner','manager'},'customers')
+    b=await request.json()
+    name=str(b.get('name') or '').strip()[:140]
+    if not name:raise HTTPException(422,'Customer name required')
+    limit=cents(b.get('credit_limit_cents',0))
+    days=b.get('terms_days',30)
+    if isinstance(days,bool) or not isinstance(days,int) or not 0<=days<=365:
+        raise HTTPException(422,'Payment terms must be 0–365 days')
+    cid=str(b.get('id') or uid())
+    with db() as c:
+        prior=one(c,'SELECT id FROM yola_local_customers WHERE id=? AND tenant=? AND active=1',cid,t)
+        if b.get('id') and not prior:raise HTTPException(404,'Customer not found')
+        if prior:
+            c.execute('''UPDATE yola_local_customers SET name=?,phone=?,email=?,credit_limit_cents=?,terms_days=?
+                WHERE id=? AND tenant=?''',(name,str(b.get('phone') or '')[:50],
+                str(b.get('email') or '')[:200],limit,days,cid,t))
+        else:
+            c.execute('''INSERT INTO yola_local_customers VALUES (?,?,?,?,?,?,?,?,?)''',
+                      (cid,t,name,str(b.get('phone') or '')[:50],
+                       str(b.get('email') or '')[:200],limit,days,1,now()))
+        event(c,t,'customer.save',{'id':cid,'name':name,'terms_days':days,'actor':u['id']})
+    return {'id':cid,'success':True}
+
+
+@app.post('/api/pos/customer/settle')
+async def settle_customer(request:Request):
+    u,t,_=auth(request,{'owner','manager'},'customers')
+    b=await request.json()
+    kind=b.get('kind')
+    if kind not in ('payment','deposit','apply_deposit'):raise HTTPException(422,'Invalid customer payment type')
+    amount=cents(b.get('amount_cents',-1))
+    if not amount:raise HTTPException(422,'Enter a positive amount')
+    method=str(b.get('payment_method') or '')
+    if kind!='apply_deposit' and method not in ('cash','bank','mobile','card'):
+        raise HTTPException(422,'Invalid payment method')
+    if kind=='apply_deposit':method='deposit'
+    key=str(b.get('idempotency_key') or '')
+    if not 10<=len(key)<=100:raise HTTPException(422,'Idempotency key required')
+    cid=str(b.get('customer_id') or '')
+    cash_code={'cash':'1000','bank':'1010','card':'1010','mobile':'1020'}.get(method)
+    with db() as c:
+        c.execute('BEGIN IMMEDIATE')
+        old=one(c,'SELECT id,kind,amount_cents,customer_id FROM yola_local_customer_cash_entries WHERE tenant=? AND idempotency_key=?',t,key)
+        if old:
+            if (old['customer_id'],old['kind'],old['amount_cents'])!=(cid,kind,amount):
+                raise HTTPException(409,'Payment key reused with different details')
+            return {'success':True,'duplicate':True,'id':old['id']}
+        snapshot=customer_snapshot(c,t,cid)
+        if kind in ('payment','apply_deposit') and amount>snapshot['due_cents']:
+            raise HTTPException(422,'Amount exceeds customer dues. Record excess as a deposit.')
+        if kind=='apply_deposit' and amount>snapshot['deposit_cents']:
+            raise HTTPException(422,'Insufficient customer deposit')
+        eid=uid()
+        c.execute('''INSERT INTO yola_local_customer_cash_entries
+            (id,tenant,customer_id,kind,amount_cents,payment_method,reference,idempotency_key,created_by,created_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?)''',
+            (eid,t,cid,kind,amount,method,str(b.get('reference') or '')[:160],key,u['id'],now()))
+        if kind in ('payment','apply_deposit'):
+            _allocate_customer_credit(c,t,cid,eid,amount)
+        entries=(
+            [(cash_code,amount,0),('1100',0,amount)] if kind=='payment'
+            else [(cash_code,amount,0),('2100',0,amount)] if kind=='deposit'
+            else [('2100',amount,0),('1100',0,amount)]
+        )
+        journal(c,t,'customer.'+kind,eid,kind+' for '+snapshot['customer']['name'],entries)
+        event(c,t,'customer.'+kind,{'id':eid,'customer_id':cid,'kind':kind,
+            'amount_cents':amount,'payment_method':method,'reference':str(b.get('reference') or '')[:160]})
+        result=customer_snapshot(c,t,cid)
+    return {'id':eid,'success':True,'due_cents':result['due_cents'],
+            'deposit_cents':result['deposit_cents']}
+
+
 @app.post('/api/pos/checkout')
 async def checkout(request:Request):
     u,t,_=auth(request,{'owner','manager','worker'});b=await request.json();items=b.get('items')
     if not isinstance(items,list) or not 1<=len(items)<=100:raise HTTPException(422,'Add items to cart')
     if b.get('payment_method') not in {'cash','bank','card','mobile','credit'}:raise HTTPException(422,'Invalid payment method')
+    if b['payment_method']=='credit':
+        auth(request,{'owner','manager'},'credit')
     key=str(b.get('idempotency_key') or '');
     if not 10<=len(key)<=100:raise HTTPException(422,'Checkout requires idempotency key')
     discount=cents(b.get('discount_cents',0))
@@ -367,15 +607,20 @@ async def checkout(request:Request):
         c.execute('BEGIN IMMEDIATE')
         prior=one(c,'SELECT id,number AS sale_number,total_cents FROM yola_local_sales WHERE tenant=? AND idempotency_key=?',t,key)
         if prior:return {'sale':{**prior,'duplicate':True}}
-        lines=[];subtotal=cost=0
+        lines=[];subtotal=cost=stock_cost=service_cost=0
         for i in sorted(items,key=lambda q:str(q.get('id',''))):
             q=i.get('qty')
             if not isinstance(q,int) or isinstance(q,bool) or q<1 or q>100000:raise HTTPException(422,'Invalid quantity')
             p=one(c,'SELECT * FROM yola_local_products WHERE id=? AND tenant=? AND active=1',i.get('id'),t)
             if not p:raise HTTPException(404,'Product not found')
-            if p['stock_qty']<q:raise HTTPException(422,'Insufficient stock for '+p['name'])
+            if p.get('kind','stock')!='service' and p['stock_qty']<q:raise HTTPException(422,'Insufficient stock for '+p['name'])
             if any(x['id']==p['id'] for x in lines):raise HTTPException(422,'Duplicate product')
-            lines.append({**p,'qty':q});subtotal+=p['price_cents']*q;cost+=p['cost_cents']*q
+            lines.append({**p,'qty':q})
+            subtotal+=p['price_cents']*q
+            line_cost=p['cost_cents']*q
+            cost+=line_cost
+            if p.get('kind','stock')=='service':service_cost+=line_cost
+            else:stock_cost+=line_cost
         if discount>subtotal:raise HTTPException(422,'Discount exceeds sale subtotal')
         sale_no=c.execute('SELECT coalesce(max(number),0)+1 FROM yola_local_sales WHERE tenant=?',(t,)).fetchone()[0]
         taxes=0; computed=[]
@@ -383,13 +628,38 @@ async def checkout(request:Request):
             net=round(p['price_cents']*p['qty']*(subtotal-discount)/subtotal) if subtotal else 0
             tax=round(net*p['tax_bps']/10000);taxes+=tax;computed.append((p,net,tax))
         total=subtotal-discount+taxes;sid=uid()
-        c.execute('INSERT INTO yola_local_sales VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)',(sid,t,u['id'],sale_no,subtotal,discount,taxes,total,cost,b['payment_method'],str(b.get('customer_name') or '')[:120],key,now()))
+        customer_id=str(b.get('customer_id') or '') or None
+        due_date=None
+        customer_name=str(b.get('customer_name') or '')[:120]
+        if b['payment_method']=='credit' and not customer_id:
+            raise HTTPException(422,'Select a registered customer for credit sales')
+        if customer_id:
+            customer=customer_snapshot(c,t,customer_id)
+            customer_name=customer['customer']['name']
+            if b['payment_method']=='credit':
+                limit=customer['customer']['credit_limit_cents']
+                if limit and customer['due_cents']+total>limit:
+                    raise HTTPException(422,'Customer credit limit exceeded')
+                due_date=(datetime.now(timezone.utc)+timedelta(days=customer['customer']['terms_days'])).date().isoformat()
+        c.execute('''INSERT INTO yola_local_sales
+            (id,tenant,cashier_id,number,subtotal_cents,discount_cents,tax_cents,total_cents,
+             cost_cents,payment_method,customer_name,idempotency_key,created_at,customer_id,due_date)
+            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+            (sid,t,u['id'],sale_no,subtotal,discount,taxes,total,cost,
+             b['payment_method'],customer_name,key,now(),customer_id,due_date))
         for p,net,tax in computed:
-            c.execute('INSERT INTO yola_local_sale_lines VALUES(?,?,?,?,?,?,?,?,?,?,?)',(uid(),t,sid,p['id'],p['name'],p['qty'],p['price_cents'],p['cost_cents'],net,tax,net+tax))
-            c.execute('UPDATE yola_local_products SET stock_qty=stock_qty-? WHERE id=?',(p['qty'],p['id']))
-            low_stock(c,t,p,p['stock_qty'],p['stock_qty']-p['qty'])
+            c.execute('''INSERT INTO yola_local_sale_lines
+                  (id,tenant,sale_id,product_id,name,qty,unit_price_cents,unit_cost_cents,net_cents,tax_cents,total_cents,kind)
+                  VALUES(?,?,?,?,?,?,?,?,?,?,?,?)''',
+                  (uid(),t,sid,p['id'],p['name'],p['qty'],p['price_cents'],p['cost_cents'],net,tax,net+tax,p.get('kind','stock')))
+            if p.get('kind','stock')!='service':
+                updated=c.execute('UPDATE yola_local_products SET stock_qty=stock_qty-? WHERE id=? AND tenant=? AND stock_qty>=?',
+                                  (p['qty'],p['id'],t,p['qty']))
+                if updated.rowcount!=1:raise HTTPException(409,'Stock changed. Please retry checkout')
+                low_stock(c,t,p,p['stock_qty'],p['stock_qty']-p['qty'])
         entries=[({'cash':'1000','bank':'1010','card':'1010','mobile':'1020','credit':'1100'}[b['payment_method']],total,0),('4000',0,subtotal-discount),('2000',0,taxes)]
-        if cost:entries.extend([('5000',cost,0),('1200',0,cost)])
+        if stock_cost:entries.extend([('5000',stock_cost,0),('1200',0,stock_cost)])
+        if service_cost:entries.extend([('5100',service_cost,0),('2200',0,service_cost)])
         journal(c,t,'sale',sid,'Sale #'+str(sale_no),entries)
         event(c,t,'sale.complete',{'sale':one(c,'SELECT * FROM yola_local_sales WHERE tenant=? AND id=?',t,sid),
            'lines':rows(c,'SELECT * FROM yola_local_sale_lines WHERE tenant=? AND sale_id=?',t,sid),
@@ -423,20 +693,32 @@ def receipt(request:Request,id:str):
 
 @app.post('/api/pos/refund')
 async def refund(request:Request):
-    u,t,_=auth(request,{'owner','manager'});b=await request.json();sid=b.get('sale_id');reason=str(b.get('reason') or '').strip();restock=b.get('restock') is True
+    u,t,_=auth(request,{'owner','manager'},'refund');b=await request.json();sid=b.get('sale_id');reason=str(b.get('reason') or '').strip();restock=b.get('restock') is True
     if len(reason)<3:raise HTTPException(422,'Refund reason required')
     with db() as c:
         c.execute('BEGIN IMMEDIATE')
         s=one(c,'SELECT * FROM yola_local_sales WHERE id=? AND tenant=?',sid,t)
         if not s:raise HTTPException(404,'Sale not found')
         if one(c,'SELECT id FROM yola_local_refunds WHERE tenant=? AND sale_id=?',t,sid):raise HTTPException(409,'Already refunded')
+        # A credit invoice with allocated customer payments needs a separate credit-note/
+        # refund-allocation workflow. Never silently create negative receivables.
+        if s['payment_method']=='credit' and one(c,'SELECT id FROM yola_local_customer_allocations WHERE tenant=? AND sale_id=?',t,sid):
+            raise HTTPException(409,'Credit sale has allocated payments. Reconcile with a credit note before refunding.')
         rid=uid();c.execute('INSERT INTO yola_local_refunds VALUES(?,?,?,?,?,?)',(rid,t,sid,reason,int(restock),now()))
         subtotal=s['subtotal_cents']-s['discount_cents']
         entries=[('4000',subtotal,0),('2000',s['tax_cents'],0),({'cash':'1000','card':'1010','mobile':'1020','bank':'1010','credit':'1100'}[s['payment_method']],0,s['total_cents'])]
         if restock:
             lines=rows(c,'SELECT * FROM yola_local_sale_lines WHERE tenant=? AND sale_id=?',t,sid)
-            for line in lines:c.execute('UPDATE yola_local_products SET stock_qty=stock_qty+? WHERE id=? AND tenant=?',(line['qty'],line['product_id'],t))
-            if s['cost_cents']:entries += [('1200',s['cost_cents'],0),('5000',0,s['cost_cents'])]
+            stock_cost=sum(line['qty']*line['unit_cost_cents'] for line in lines if line.get('kind','stock')=='stock')
+            for line in lines:
+                if line.get('kind','stock')=='stock':
+                    c.execute('UPDATE yola_local_products SET stock_qty=stock_qty+? WHERE id=? AND tenant=?',(line['qty'],line['product_id'],t))
+            if stock_cost:entries += [('1200',stock_cost,0),('5000',0,stock_cost)]
+        # Reversing a service sale also reverses its accrued delivery expense.
+        # A stock return reverses COGS only if physically restocked.
+        service_cost=c.execute('''SELECT coalesce(sum(qty*unit_cost_cents),0) FROM yola_local_sale_lines
+            WHERE tenant=? AND sale_id=? AND kind='service' ''',(t,sid)).fetchone()[0]
+        if service_cost:entries += [('2200',service_cost,0),('5100',0,service_cost)]
         journal(c,t,'refund',sid,reason,entries)
         event(c,t,'refund',{'id':rid,'sale_id':sid,'reason':reason,'restock':restock,'cashier_email':u['email']})
     return {'success':True}
@@ -457,7 +739,7 @@ def expenses(request:Request):
     u,t,_=auth(request,{'owner'});
     with db() as c:return {'expenses':rows(c,'''SELECT e.id,e.title,e.amount_cents,e.payment_method,e.created_at,u.name AS created_by FROM yola_local_expenses e JOIN yola_local_accounts u ON u.id=e.created_by WHERE e.tenant=? ORDER BY e.created_at DESC LIMIT 100''',t)}
 
-CHART=[('1000','Cash','asset'),('1010','Bank and card clearing','asset'),('1020','Mobile money','asset'),('1100','Accounts receivable','asset'),('1200','Inventory','asset'),('2000','Tax payable','liability'),('3000','Opening capital','equity'),('4000','Sales revenue','income'),('4900','Stock adjustment income','income'),('5000','Cost of goods sold','expense'),('6100','Operating expenses','expense'),('6200','Stock shrinkage','expense')]
+CHART=[('1000','Cash','asset'),('1010','Bank and card clearing','asset'),('1020','Mobile money','asset'),('2100','Customer advance deposits','liability'),('2200','Accrued service delivery costs','liability'),('1100','Accounts receivable','asset'),('1200','Inventory','asset'),('2000','Tax payable','liability'),('3000','Opening capital','equity'),('4000','Sales revenue','income'),('4900','Stock adjustment income','income'),('5000','Cost of goods sold','expense'),('5100','Service delivery costs','expense'),('6100','Operating expenses','expense'),('6200','Stock shrinkage','expense')]
 @app.get('/api/pos/accounts')
 def accounts(request:Request):
     u,t,_=auth(request,{'owner'});
@@ -548,7 +830,46 @@ def retry_alerts(request:Request):
 def staff(request:Request):
     u,t,_=auth(request,{'owner'});
     with db() as c:
-        return {'staff':rows(c,'SELECT id,name,email,role,active FROM yola_local_accounts WHERE tenant=? ORDER BY name',t)}
+        staff=rows(c,'''SELECT a.id,a.name,a.email,a.role,a.active,
+                     coalesce(r.enabled,1) AS access_enabled,coalesce(r.permissions,'{}') AS permissions
+                     FROM yola_local_accounts a
+                     LEFT JOIN yola_local_staff_rules r ON r.tenant=a.tenant AND r.email=a.email
+                     WHERE a.tenant=? ORDER BY a.name''',t)
+        for person in staff:person['permissions']=json.loads(person['permissions'])
+        return {'staff':staff}
+
+@app.post('/api/staff/access')
+async def staff_access(request:Request):
+    """An owner may revoke staff access or narrow their existing cloud role.
+    This cannot create accounts or elevate a worker to a manager.
+    """
+    owner,tenant,_=auth(request,{'owner'})
+    b=await request.json()
+    email=str(b.get('email') or '').strip().lower()
+    active=b.get('enabled')
+    if not isinstance(active,bool):raise HTTPException(422,'Enabled must be true or false')
+    permissions=b.get('permissions',{})
+    if not isinstance(permissions,dict) or set(permissions)-{'inventory','customers','credit','refund'}:
+        raise HTTPException(422,'Unsupported staff permissions')
+    if any(not isinstance(value,bool) for value in permissions.values()):
+        raise HTTPException(422,'Permissions must be boolean')
+    with db() as c:
+        staff=one(c,'SELECT id,role FROM yola_local_accounts WHERE tenant=? AND email=?',tenant,email)
+        if not staff:raise HTTPException(404,'Staff account not enrolled on this PC')
+        if staff['role']=='owner' or staff['id']==owner['id']:
+            raise HTTPException(403,'Owner account cannot be disabled or restricted here')
+        if staff['role']=='worker' and any(permissions.values()):
+            raise HTTPException(422,'Worker permissions cannot exceed the assigned sales-only cloud role')
+        c.execute('''INSERT INTO yola_local_staff_rules(tenant,email,enabled,permissions,updated_by,updated_at)
+            VALUES(?,?,?,?,?,?) ON CONFLICT(tenant,email) DO UPDATE SET
+            enabled=excluded.enabled,permissions=excluded.permissions,updated_by=excluded.updated_by,
+            updated_at=excluded.updated_at''',
+            (tenant,email,int(active),json.dumps(permissions),owner['id'],now()))
+        if not active:
+            c.execute('''DELETE FROM yola_local_sessions WHERE account_id=?''',(staff['id'],))
+        event(c,tenant,'staff.access',{'email':email,'enabled':active,'permissions':permissions,'actor':owner['id']})
+    return {'success':True}
+
 
 @app.post('/api/invites')
 def offline_invites(request:Request):

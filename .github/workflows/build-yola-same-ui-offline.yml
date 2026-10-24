@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - build/yola-exact-ui-offline
+      - feature/yola-client-7-requests-20261024
     paths:
       - 'yola/offline/**'
       - '.github/workflows/build-yola-same-ui-offline.yml'
@@ -59,6 +60,10 @@ jobs:
         run: |
           python -m py_compile desktop/local_server.py desktop/offline_web.py desktop/cloud_identity.py desktop/hybrid_app.py desktop/desktop_app.py
           if ($LASTEXITCODE -ne 0) { throw 'Python compile failed' }
+          python test_client_requests.py
+          if ($LASTEXITCODE -ne 0) { throw 'Yola seven client requests acceptance failed' }
+          node --check desktop/static/pos.js
+          if ($LASTEXITCODE -ne 0) { throw 'Yola frontend syntax failed' }
           python test_offline_web.py
           if ($LASTEXITCODE -ne 0) { throw 'Offline source acceptance tests failed' }
           python desktop/desktop_app.py --self-test

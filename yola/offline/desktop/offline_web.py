@@ -107,6 +107,26 @@ def sql_init():
           payload TEXT NOT NULL, created_at TEXT NOT NULL,
           synced INTEGER NOT NULL DEFAULT 0,
           uploaded_at TEXT, last_error TEXT);
+        CREATE TABLE IF NOT EXISTS yola_local_customers (
+          id TEXT PRIMARY KEY, tenant TEXT NOT NULL, name TEXT NOT NULL,
+          phone TEXT, email TEXT, credit_limit_cents INTEGER NOT NULL DEFAULT 0,
+          terms_days INTEGER NOT NULL DEFAULT 30, active INTEGER NOT NULL DEFAULT 1,
+          created_at TEXT NOT NULL);
+        CREATE INDEX IF NOT EXISTS yola_l_customer_tenant ON yola_local_customers(tenant,name);
+        CREATE TABLE IF NOT EXISTS yola_local_customer_cash_entries (
+          id TEXT PRIMARY KEY, tenant TEXT NOT NULL, customer_id TEXT NOT NULL,
+          kind TEXT NOT NULL CHECK(kind IN ('payment','deposit','apply_deposit')),
+          amount_cents INTEGER NOT NULL CHECK(amount_cents>0),
+          payment_method TEXT NOT NULL, reference TEXT, idempotency_key TEXT NOT NULL,
+          created_by TEXT NOT NULL, created_at TEXT NOT NULL, UNIQUE(tenant,idempotency_key));
+        CREATE TABLE IF NOT EXISTS yola_local_customer_allocations (
+          id TEXT PRIMARY KEY, tenant TEXT NOT NULL, entry_id TEXT NOT NULL,
+          sale_id TEXT NOT NULL, amount_cents INTEGER NOT NULL CHECK(amount_cents>0),
+          UNIQUE(tenant,entry_id,sale_id));
+        CREATE TABLE IF NOT EXISTS yola_local_staff_rules (
+          tenant TEXT NOT NULL, email TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1,
+          permissions TEXT NOT NULL DEFAULT '{}', updated_by TEXT, updated_at TEXT NOT NULL,
+          PRIMARY KEY(tenant,email));
         CREATE INDEX IF NOT EXISTS yola_l_product_tenant ON yola_local_products(tenant,active,name);
         CREATE INDEX IF NOT EXISTS yola_l_sale_tenant ON yola_local_sales(tenant,created_at);
         CREATE INDEX IF NOT EXISTS yola_l_event_unsynced ON yola_local_events(tenant,synced);
@@ -161,6 +181,8 @@ def cache_verified_staff(tenant,license_info,email,password):
         raise HTTPException(403,'Unsupported account role')
     salt,digest=new_password(password)
     with db() as c:
+        policy=one(c,'SELECT enabled FROM yola_local_staff_rules WHERE tenant=? AND email=?',tenant,email.lower())
+        if policy and not policy['enabled']:raise HTTPException(403,'Staff access disabled by the business owner')
         prior=one(c,'SELECT id FROM yola_local_accounts WHERE tenant=? AND lower(email)=?',tenant,email.lower())
         account_id=prior['id'] if prior else uid()
         c.execute('''INSERT INTO yola_local_accounts(id,tenant,email,name,role,pass_salt,pass_hash,active)
@@ -179,7 +201,7 @@ def new_password(password):
     return salt,hash_password(password,salt)
 
 
-def auth(request,allowed=None):
+def auth(request,allowed=None,permission=None):
     tenant,license_info=lease()
     token=request.cookies.get('yola_offline_session','')
     if not token:raise HTTPException(401,'Please sign in')
@@ -188,6 +210,16 @@ def auth(request,allowed=None):
             WHERE s.token_hash=? AND s.expires_at>? AND a.active=1 AND a.tenant=?""",phash(token),now(),tenant)
     if not u:raise HTTPException(401,'Please sign in')
     if allowed and u['role'] not in allowed:raise HTTPException(403,'This account does not have permission')
+    if u['role']!='owner':
+        with db() as c:
+            rule=one(c,'SELECT enabled,permissions FROM yola_local_staff_rules WHERE tenant=? AND email=?',tenant,u['email'])
+        if rule and not rule['enabled']:raise HTTPException(403,'Staff access disabled')
+        if permission:
+            defaults={'manager':{'inventory','refund','customers','credit'},'worker':set()}
+            default=permission in defaults.get(u['role'],set())
+            effective=json.loads(rule['permissions']).get(permission,default) if rule else default
+            # Owner rules can only revoke the default capabilities, never grant wider access.
+            if not (default and effective is True):raise HTTPException(403,'Your account is restricted from '+permission)
     return u,tenant,license_info
 
 
@@ -268,6 +300,8 @@ async def login(request:Request,response:Response):
         response.set_cookie('yola_setup',token,httponly=True,samesite='strict',max_age=7200)
         return result
     with db() as c:
+        rule=one(c,'SELECT enabled FROM yola_local_staff_rules WHERE tenant=? AND email=?',tenant,email)
+        if rule and not rule['enabled']:raise HTTPException(403,'Staff access disabled by owner')
         u=one(c,'SELECT * FROM yola_local_accounts WHERE tenant=? AND lower(email)=? AND active=1',tenant,email)
     if not u or not hmac.compare_digest(hash_password(password,u['pass_salt']),u['pass_hash']):
         # New user or password change: contact the actual Yola server once.
@@ -331,7 +365,7 @@ def summary(request:Request):
 
 @app.post('/api/pos/product')
 async def product(request:Request):
-    u,t,_=auth(request,{'owner','manager'})
+    u,t,_=auth(request,{'owner','manager'},'inventory')
     b=await request.json()
     name=str(b.get('name') or '').strip()[:140]
     if not name:raise HTTPException(422,'Product name required')
@@ -363,7 +397,7 @@ async def product(request:Request):
 
 @app.post('/api/pos/product/edit')
 async def edit_product(request:Request):
-    u,t,_=auth(request,{'owner','manager'})
+    u,t,_=auth(request,{'owner','manager'},'inventory')
     b=await request.json()
     pid=str(b.get('product_id') or '')
     allowed=('name','quality','category','barcode','price_cents','cost_cents','tax_bps','min_stock')
@@ -395,7 +429,7 @@ async def edit_product(request:Request):
 
 @app.post('/api/pos/archive-product')
 async def archive(request:Request):
-    u,t,_=auth(request,{'owner','manager'});b=await request.json()
+    u,t,_=auth(request,{'owner','manager'},'inventory');b=await request.json()
     with db() as c:
         cur=c.execute('UPDATE yola_local_products SET active=0 WHERE id=? AND tenant=? AND active=1',(b.get('product_id'),t))
         if not cur.rowcount:raise HTTPException(404,'Product not found')
@@ -404,7 +438,7 @@ async def archive(request:Request):
 
 @app.post('/api/pos/stock')
 async def stock(request:Request):
-    u,t,_=auth(request,{'owner','manager'});b=await request.json();delta=b.get('delta')
+    u,t,_=auth(request,{'owner','manager'},'inventory');b=await request.json();delta=b.get('delta')
     if isinstance(delta,bool) or not isinstance(delta,int) or delta==0 or abs(delta)>100000:raise HTTPException(422,'Invalid stock adjustment')
     with db() as c:
         p=one(c,'SELECT * FROM yola_local_products WHERE id=? AND tenant=? AND active=1',b.get('product_id'),t)
@@ -498,7 +532,7 @@ def receipt(request:Request,id:str):
 
 @app.post('/api/pos/refund')
 async def refund(request:Request):
-    u,t,_=auth(request,{'owner','manager'});b=await request.json();sid=b.get('sale_id');reason=str(b.get('reason') or '').strip();restock=b.get('restock') is True
+    u,t,_=auth(request,{'owner','manager'},'refund');b=await request.json();sid=b.get('sale_id');reason=str(b.get('reason') or '').strip();restock=b.get('restock') is True
     if len(reason)<3:raise HTTPException(422,'Refund reason required')
     with db() as c:
         c.execute('BEGIN IMMEDIATE')

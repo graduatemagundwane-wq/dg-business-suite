@@ -115,6 +115,17 @@ def sql_init():
         existing={r[1] for r in c.execute('PRAGMA table_info(yola_local_events)')}
         for col in ('uploaded_at','last_error'):
             if col not in existing:c.execute(f'ALTER TABLE yola_local_events ADD COLUMN {col} TEXT')
+        # Safe additive migrations: older client databases and receipts are preserved.
+        additions={
+            'yola_local_products':[('quality',"TEXT NOT NULL DEFAULT ''"),('kind',"TEXT NOT NULL DEFAULT 'stock'")],
+            'yola_local_sale_lines':[('kind',"TEXT NOT NULL DEFAULT 'stock'")],
+            'yola_local_sales':[('customer_id',"TEXT"),('due_date',"TEXT")],
+        }
+        for table,columns in additions.items():
+            existing={row[1] for row in c.execute(f'PRAGMA table_info({table})')}
+            for col,definition in columns:
+                if col not in existing:c.execute(f'ALTER TABLE {table} ADD COLUMN {col} {definition}')
+
 
 sql_init()
 
@@ -193,7 +204,7 @@ def event(c,tenant,kind,obj):
 
 
 def low_stock(c,tenant,p,old_count,new_count):
-    if old_count>p['min_stock'] and new_count<=p['min_stock']:
+    if p.get('kind','stock')!='service' and old_count>p['min_stock'] and new_count<=p['min_stock']:
         c.execute('INSERT INTO yola_local_alerts VALUES(?,?,?,?,?,?)',(uid(),tenant,p['id'],'queued',json.dumps({'name':p['name'],'sku':p['sku'],'stock':new_count}),now()))
 
 
@@ -297,9 +308,13 @@ def registration_guide():
 def products(request:Request):
     u,t,_=auth(request,{'owner','manager','worker'})
     with db() as c:
-        products=rows(c,'SELECT * FROM yola_local_products WHERE tenant=? AND active=1 ORDER BY name LIMIT 1000',t)
+        products=rows(c,'SELECT * FROM yola_local_products WHERE tenant=? AND active=1 ORDER BY category,name LIMIT 1000',t)
+    for p in products:
+        p['margin_percent']=round(100*(p['price_cents']-p['cost_cents'])/p['price_cents'],2) if p['price_cents'] else None
     if u['role']=='worker':
-        for p in products:p.pop('cost_cents',None)
+        for p in products:
+            p.pop('cost_cents',None)
+            p.pop('margin_percent',None)
     return {'products':products}
 
 @app.get('/api/pos/summary')
@@ -311,25 +326,72 @@ def summary(request:Request):
         args=[t,today]
         if u['role']=='worker':query+=' AND cashier_id=?';args.append(u['id'])
         counts=one(c,query,*args)
-        if u['role']!='worker':counts.update(one(c,'SELECT count(*) AS products,coalesce(sum(CASE WHEN stock_qty<=min_stock THEN 1 ELSE 0 END),0) AS low_stock FROM yola_local_products WHERE tenant=? AND active=1',t))
+        if u['role']!='worker':counts.update(one(c,'SELECT count(*) AS products,coalesce(sum(CASE WHEN kind='stock' AND stock_qty<=min_stock THEN 1 ELSE 0 END),0) AS low_stock FROM yola_local_products WHERE tenant=? AND active=1',t))
     return {'summary':counts}
 
 @app.post('/api/pos/product')
 async def product(request:Request):
-    u,t,_=auth(request,{'owner','manager'});b=await request.json();name=str(b.get('name','')).strip()[:140]
+    u,t,_=auth(request,{'owner','manager'})
+    b=await request.json()
+    name=str(b.get('name') or '').strip()[:140]
     if not name:raise HTTPException(422,'Product name required')
-    price=cents(b.get('price_cents',-1));cost=cents(b.get('cost_cents',0));initial=cents(b.get('stock_qty',0));min_stock=cents(b.get('min_stock',5));tax=cents(b.get('tax_bps',0))
+    kind=b.get('kind','stock')
+    if kind not in ('stock','service'):raise HTTPException(422,'Invalid item type')
+    price=cents(b.get('price_cents',-1))
+    cost=cents(b.get('cost_cents',0))
+    initial=cents(b.get('stock_qty',0))
+    min_stock=cents(b.get('min_stock',5))
+    tax=cents(b.get('tax_bps',0))
     if tax>3000:raise HTTPException(422,'Invalid tax')
+    if kind=='service' and initial:raise HTTPException(422,'Services cannot have stock quantities')
     p={'id':uid(),'tenant':t,'name':name,'sku':str(b.get('sku','')).strip()[:70] or 'YL-'+secrets.token_hex(6).upper(),
-    'barcode':str(b.get('barcode') or ''),'category':str(b.get('category') or 'General'),'price_cents':price,'cost_cents':cost,'tax_bps':tax,'stock_qty':initial,'min_stock':min_stock,'active':1,'created_at':now()}
+       'barcode':str(b.get('barcode') or '')[:140],'category':str(b.get('category') or 'General').strip()[:100],
+       'quality':str(b.get('quality') or '').strip()[:120],'kind':kind,
+       'price_cents':price,'cost_cents':cost,'tax_bps':tax,'stock_qty':initial,'min_stock':min_stock,'active':1,'created_at':now()}
     try:
         with db() as c:
-            c.execute('INSERT INTO yola_local_products VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)',tuple(p.values()))
-            if initial*cost:journal(c,t,'opening_stock',p['id'],'Opening stock '+name,[('1200',initial*cost,0),('3000',0,initial*cost)])
+            c.execute('''INSERT INTO yola_local_products
+              (id,tenant,name,sku,barcode,category,quality,kind,price_cents,cost_cents,tax_bps,stock_qty,min_stock,active,created_at)
+              VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',tuple(p.values()))
+            if kind=='stock' and initial*cost:
+                journal(c,t,'opening_stock',p['id'],'Opening stock '+name,[('1200',initial*cost,0),('3000',0,initial*cost)])
             low_stock(c,t,p,min_stock+1,initial)
             event(c,t,'product.create',p)
     except sqlite3.IntegrityError:raise HTTPException(409,'SKU already registered')
-    return {'id':p['id']}
+    return {'id':p['id'],'margin_percent':round(100*(price-cost)/price,2) if price else None}
+
+
+@app.post('/api/pos/product/edit')
+async def edit_product(request:Request):
+    u,t,_=auth(request,{'owner','manager'})
+    b=await request.json()
+    pid=str(b.get('product_id') or '')
+    allowed=('name','quality','category','barcode','price_cents','cost_cents','tax_bps','min_stock')
+    changes={}
+    for key in allowed:
+        if key not in b:continue
+        if key in ('price_cents','cost_cents','tax_bps','min_stock'):
+            changes[key]=cents(b[key])
+        else:
+            lengths={'name':140,'quality':120,'category':100,'barcode':140}
+            changes[key]=str(b[key] or '').strip()[:lengths[key]]
+    if not changes:raise HTTPException(422,'No valid changes')
+    if 'name' in changes and not changes['name']:raise HTTPException(422,'Item name required')
+    if 'category' in changes and not changes['category']:raise HTTPException(422,'Category required')
+    if changes.get('tax_bps',0)>3000:raise HTTPException(422,'Invalid tax')
+    with db() as c:
+        c.execute('BEGIN IMMEDIATE')
+        prior=one(c,'SELECT * FROM yola_local_products WHERE tenant=? AND id=? AND active=1',t,pid)
+        if not prior:raise HTTPException(404,'Item not found')
+        # Inventory quantities only change through stock adjustments (audited).
+        c.execute('UPDATE yola_local_products SET '+','.join(k+'=?' for k in changes)+' WHERE tenant=? AND id=?',
+                  (*changes.values(),t,pid))
+        updated=one(c,'SELECT * FROM yola_local_products WHERE tenant=? AND id=?',t,pid)
+        event(c,t,'product.edit',{'product_id':pid,'changed_fields':list(changes),'before':prior,'after':updated,'actor':u['id']})
+        if 'min_stock' in changes:low_stock(c,t,updated,prior['min_stock']+1,updated['stock_qty'])
+    return {'success':True,'product':updated,
+        'margin_percent':round(100*(updated['price_cents']-updated['cost_cents'])/updated['price_cents'],2) if updated['price_cents'] else None}
+
 
 @app.post('/api/pos/archive-product')
 async def archive(request:Request):
@@ -347,6 +409,7 @@ async def stock(request:Request):
     with db() as c:
         p=one(c,'SELECT * FROM yola_local_products WHERE id=? AND tenant=? AND active=1',b.get('product_id'),t)
         if not p:raise HTTPException(404,'Product not found')
+        if p.get('kind')=='service':raise HTTPException(422,'Service items do not have stock')
         if p['stock_qty']+delta<0:raise HTTPException(422,'Insufficient stock')
         c.execute('UPDATE yola_local_products SET stock_qty=stock_qty+? WHERE id=?',(delta,p['id']))
         low_stock(c,t,p,p['stock_qty'],p['stock_qty']+delta)
@@ -367,15 +430,20 @@ async def checkout(request:Request):
         c.execute('BEGIN IMMEDIATE')
         prior=one(c,'SELECT id,number AS sale_number,total_cents FROM yola_local_sales WHERE tenant=? AND idempotency_key=?',t,key)
         if prior:return {'sale':{**prior,'duplicate':True}}
-        lines=[];subtotal=cost=0
+        lines=[];subtotal=cost=stock_cost=service_cost=0
         for i in sorted(items,key=lambda q:str(q.get('id',''))):
             q=i.get('qty')
             if not isinstance(q,int) or isinstance(q,bool) or q<1 or q>100000:raise HTTPException(422,'Invalid quantity')
             p=one(c,'SELECT * FROM yola_local_products WHERE id=? AND tenant=? AND active=1',i.get('id'),t)
             if not p:raise HTTPException(404,'Product not found')
-            if p['stock_qty']<q:raise HTTPException(422,'Insufficient stock for '+p['name'])
+            if p.get('kind','stock')!='service' and p['stock_qty']<q:raise HTTPException(422,'Insufficient stock for '+p['name'])
             if any(x['id']==p['id'] for x in lines):raise HTTPException(422,'Duplicate product')
-            lines.append({**p,'qty':q});subtotal+=p['price_cents']*q;cost+=p['cost_cents']*q
+            lines.append({**p,'qty':q})
+            subtotal+=p['price_cents']*q
+            line_cost=p['cost_cents']*q
+            cost+=line_cost
+            if p.get('kind','stock')=='service':service_cost+=line_cost
+            else:stock_cost+=line_cost
         if discount>subtotal:raise HTTPException(422,'Discount exceeds sale subtotal')
         sale_no=c.execute('SELECT coalesce(max(number),0)+1 FROM yola_local_sales WHERE tenant=?',(t,)).fetchone()[0]
         taxes=0; computed=[]
@@ -385,11 +453,18 @@ async def checkout(request:Request):
         total=subtotal-discount+taxes;sid=uid()
         c.execute('INSERT INTO yola_local_sales VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)',(sid,t,u['id'],sale_no,subtotal,discount,taxes,total,cost,b['payment_method'],str(b.get('customer_name') or '')[:120],key,now()))
         for p,net,tax in computed:
-            c.execute('INSERT INTO yola_local_sale_lines VALUES(?,?,?,?,?,?,?,?,?,?,?)',(uid(),t,sid,p['id'],p['name'],p['qty'],p['price_cents'],p['cost_cents'],net,tax,net+tax))
-            c.execute('UPDATE yola_local_products SET stock_qty=stock_qty-? WHERE id=?',(p['qty'],p['id']))
-            low_stock(c,t,p,p['stock_qty'],p['stock_qty']-p['qty'])
+            c.execute('''INSERT INTO yola_local_sale_lines
+                  (id,tenant,sale_id,product_id,name,qty,unit_price_cents,unit_cost_cents,net_cents,tax_cents,total_cents,kind)
+                  VALUES(?,?,?,?,?,?,?,?,?,?,?,?)''',
+                  (uid(),t,sid,p['id'],p['name'],p['qty'],p['price_cents'],p['cost_cents'],net,tax,net+tax,p.get('kind','stock')))
+            if p.get('kind','stock')!='service':
+                updated=c.execute('UPDATE yola_local_products SET stock_qty=stock_qty-? WHERE id=? AND tenant=? AND stock_qty>=?',
+                                  (p['qty'],p['id'],t,p['qty']))
+                if updated.rowcount!=1:raise HTTPException(409,'Stock changed. Please retry checkout')
+                low_stock(c,t,p,p['stock_qty'],p['stock_qty']-p['qty'])
         entries=[({'cash':'1000','bank':'1010','card':'1010','mobile':'1020','credit':'1100'}[b['payment_method']],total,0),('4000',0,subtotal-discount),('2000',0,taxes)]
-        if cost:entries.extend([('5000',cost,0),('1200',0,cost)])
+        if stock_cost:entries.extend([('5000',stock_cost,0),('1200',0,stock_cost)])
+        if service_cost:entries.extend([('5100',service_cost,0),('1000',0,service_cost)])
         journal(c,t,'sale',sid,'Sale #'+str(sale_no),entries)
         event(c,t,'sale.complete',{'sale':one(c,'SELECT * FROM yola_local_sales WHERE tenant=? AND id=?',t,sid),
            'lines':rows(c,'SELECT * FROM yola_local_sale_lines WHERE tenant=? AND sale_id=?',t,sid),
@@ -435,8 +510,11 @@ async def refund(request:Request):
         entries=[('4000',subtotal,0),('2000',s['tax_cents'],0),({'cash':'1000','card':'1010','mobile':'1020','bank':'1010','credit':'1100'}[s['payment_method']],0,s['total_cents'])]
         if restock:
             lines=rows(c,'SELECT * FROM yola_local_sale_lines WHERE tenant=? AND sale_id=?',t,sid)
-            for line in lines:c.execute('UPDATE yola_local_products SET stock_qty=stock_qty+? WHERE id=? AND tenant=?',(line['qty'],line['product_id'],t))
-            if s['cost_cents']:entries += [('1200',s['cost_cents'],0),('5000',0,s['cost_cents'])]
+            stock_cost=sum(line['qty']*line['unit_cost_cents'] for line in lines if line.get('kind','stock')=='stock')
+            for line in lines:
+                if line.get('kind','stock')=='stock':
+                    c.execute('UPDATE yola_local_products SET stock_qty=stock_qty+? WHERE id=? AND tenant=?',(line['qty'],line['product_id'],t))
+            if stock_cost:entries += [('1200',stock_cost,0),('5000',0,stock_cost)]
         journal(c,t,'refund',sid,reason,entries)
         event(c,t,'refund',{'id':rid,'sale_id':sid,'reason':reason,'restock':restock,'cashier_email':u['email']})
     return {'success':True}
@@ -457,7 +535,7 @@ def expenses(request:Request):
     u,t,_=auth(request,{'owner'});
     with db() as c:return {'expenses':rows(c,'''SELECT e.id,e.title,e.amount_cents,e.payment_method,e.created_at,u.name AS created_by FROM yola_local_expenses e JOIN yola_local_accounts u ON u.id=e.created_by WHERE e.tenant=? ORDER BY e.created_at DESC LIMIT 100''',t)}
 
-CHART=[('1000','Cash','asset'),('1010','Bank and card clearing','asset'),('1020','Mobile money','asset'),('1100','Accounts receivable','asset'),('1200','Inventory','asset'),('2000','Tax payable','liability'),('3000','Opening capital','equity'),('4000','Sales revenue','income'),('4900','Stock adjustment income','income'),('5000','Cost of goods sold','expense'),('6100','Operating expenses','expense'),('6200','Stock shrinkage','expense')]
+CHART=[('1000','Cash','asset'),('1010','Bank and card clearing','asset'),('1020','Mobile money','asset'),('1100','Accounts receivable','asset'),('1200','Inventory','asset'),('2000','Tax payable','liability'),('3000','Opening capital','equity'),('4000','Sales revenue','income'),('4900','Stock adjustment income','income'),('5000','Cost of goods sold','expense'),('5100','Service delivery costs','expense'),('6100','Operating expenses','expense'),('6200','Stock shrinkage','expense')]
 @app.get('/api/pos/accounts')
 def accounts(request:Request):
     u,t,_=auth(request,{'owner'});

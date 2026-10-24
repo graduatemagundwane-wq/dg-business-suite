@@ -695,6 +695,10 @@ async def refund(request:Request):
         s=one(c,'SELECT * FROM yola_local_sales WHERE id=? AND tenant=?',sid,t)
         if not s:raise HTTPException(404,'Sale not found')
         if one(c,'SELECT id FROM yola_local_refunds WHERE tenant=? AND sale_id=?',t,sid):raise HTTPException(409,'Already refunded')
+        # A credit invoice with allocated customer payments needs a separate credit-note/
+        # refund-allocation workflow. Never silently create negative receivables.
+        if s['payment_method']=='credit' and one(c,'SELECT id FROM yola_local_customer_allocations WHERE tenant=? AND sale_id=?',t,sid):
+            raise HTTPException(409,'Credit sale has allocated payments. Reconcile with a credit note before refunding.')
         rid=uid();c.execute('INSERT INTO yola_local_refunds VALUES(?,?,?,?,?,?)',(rid,t,sid,reason,int(restock),now()))
         subtotal=s['subtotal_cents']-s['discount_cents']
         entries=[('4000',subtotal,0),('2000',s['tax_cents'],0),({'cash':'1000','card':'1010','mobile':'1020','bank':'1010','credit':'1100'}[s['payment_method']],0,s['total_cents'])]
@@ -705,6 +709,11 @@ async def refund(request:Request):
                 if line.get('kind','stock')=='stock':
                     c.execute('UPDATE yola_local_products SET stock_qty=stock_qty+? WHERE id=? AND tenant=?',(line['qty'],line['product_id'],t))
             if stock_cost:entries += [('1200',stock_cost,0),('5000',0,stock_cost)]
+        # Reversing a service sale also reverses its accrued delivery expense.
+        # A stock return reverses COGS only if physically restocked.
+        service_cost=c.execute('''SELECT coalesce(sum(qty*unit_cost_cents),0) FROM yola_local_sale_lines
+            WHERE tenant=? AND sale_id=? AND kind='service' ''',(t,sid)).fetchone()[0]
+        if service_cost:entries += [('2200',service_cost,0),('5100',0,service_cost)]
         journal(c,t,'refund',sid,reason,entries)
         event(c,t,'refund',{'id':rid,'sale_id':sid,'reason':reason,'restock':restock,'cashier_email':u['email']})
     return {'success':True}

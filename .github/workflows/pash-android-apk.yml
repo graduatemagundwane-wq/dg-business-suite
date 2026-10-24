@@ -1,4 +1,4 @@
-name: PASH Auto Android QA APK
+name: PASH Auto Standalone Android QA (Bundled)
 on:
   workflow_dispatch:
   push:
@@ -10,7 +10,7 @@ on:
 permissions:
   contents: read
 jobs:
-  android-debug-apk:
+  android-standalone-apk:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
@@ -56,6 +56,41 @@ jobs:
           content=content.replace(old2,"{action && action.id===item.id?")
           file.write_text(content)
           PY
+      - name: Generate PASH official launcher and adaptive icon
+        run: |
+          python3 -m pip install --disable-pip-version-check Pillow
+          python3 - <<'PY'
+          import base64,io,json
+          from pathlib import Path
+          from PIL import Image
+          raw=Path("pash-operations/branding/pash-auto-official.webp.b64").read_text().strip()
+          brand=Image.open(io.BytesIO(base64.b64decode(raw))).convert("RGBA")
+          assets=Path("pash-operations/app/mobile/assets")
+          assets.mkdir(parents=True,exist_ok=True)
+          canvas=Image.new("RGBA",(1024,1024),"white")
+          full=brand.copy()
+          full.thumbnail((960,550),Image.Resampling.LANCZOS)
+          canvas.alpha_composite(full,((1024-full.width)//2,(1024-full.height)//2))
+          canvas.convert("RGB").save(assets/"icon.png")
+          adaptive=Image.new("RGBA",(1024,1024),(0,0,0,0))
+          compact=brand.copy()
+          compact.thumbnail((740,380),Image.Resampling.LANCZOS)
+          adaptive.alpha_composite(compact,((1024-compact.width)//2,(1024-compact.height)//2))
+          adaptive.save(assets/"adaptive-icon.png")
+          canvas.convert("RGB").save(assets/"splash.png")
+          p=Path("pash-operations/app/mobile/app.json")
+          cfg=json.loads(p.read_text())
+          exp=cfg["expo"]
+          exp["version"]="0.5.2"
+          exp["icon"]="./assets/icon.png"
+          exp["android"]["icon"]="./assets/icon.png"
+          exp["android"]["versionCode"]=6
+          exp["android"]["adaptiveIcon"]={"foregroundImage":"./assets/adaptive-icon.png","backgroundColor":"#FFFFFF"}
+          exp["splash"]={"image":"./assets/splash.png","resizeMode":"contain","backgroundColor":"#FFFFFF"}
+          p.write_text(json.dumps(cfg,indent=2)+"\\n")
+          assert (assets/"icon.png").stat().st_size>10000
+          print("Official PASH Auto EV & Hybrid Centre logo configured as launcher icon")
+          PY
       - name: Install Expo dependencies
         working-directory: pash-operations/app/mobile
         run: npm install --no-audit --no-fund
@@ -68,25 +103,28 @@ jobs:
       - name: Generate Android native project
         working-directory: pash-operations/app/mobile
         run: npx expo prebuild --platform android --non-interactive --no-install
-      - name: Compile QA debug APK and sign with Android debug key
+      - name: Compile standalone QA release variant with embedded JS bundle
         working-directory: pash-operations/app/mobile/android
         run: |
           chmod +x ./gradlew
-          ./gradlew --no-daemon --stacktrace assembleDebug
+          ./gradlew --no-daemon --stacktrace assembleRelease
       - name: Verify built APK exists and has a signature
         working-directory: pash-operations/app/mobile
         run: |
-          APK=android/app/build/outputs/apk/debug/app-debug.apk
+          APK=android/app/build/outputs/apk/release/app-release.apk
           test -s "$APK"
           ls -lh "$APK"
           "$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)/apksigner" verify --verbose "$APK"
-          sha256sum "$APK" > android-debug-apk.sha256
+          echo "Checking JS bundle is embedded for offline startup (Metro NOT required)"
+          unzip -l "$APK" | grep 'assets/index.android.bundle'
+          test "$(unzip -p "$APK" assets/index.android.bundle | wc -c)" -gt 20000
+          sha256sum "$APK" > android-standalone-apk.sha256
       - name: Upload APK and checksum
         uses: actions/upload-artifact@v4
         with:
-          name: PASH-Auto-Operations-Android-QA
+          name: PASH-Auto-Operations-Standalone-QA
           path: |
-            pash-operations/app/mobile/android/app/build/outputs/apk/debug/app-debug.apk
-            pash-operations/app/mobile/android-debug-apk.sha256
+            pash-operations/app/mobile/android/app/build/outputs/apk/release/app-release.apk
+            pash-operations/app/mobile/android-standalone-apk.sha256
           if-no-files-found: error
           retention-days: 30

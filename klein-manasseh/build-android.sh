@@ -43,9 +43,17 @@ javac -source 8 -target 8 -Xlint:-options -cp "$ANDROID_HOME/platforms/android-3
 "$SDK/d8" --lib "$ANDROID_HOME/platforms/android-35/android.jar" --output "$WORK/dex" $(find "$WORK/classes" -name '*.class')
 (cd "$WORK/dex"; "$SDK/aapt" add "$WORK/unsigned.apk" classes.dex)
 "$SDK/zipalign" -f 4 "$WORK/unsigned.apk" "$WORK/aligned.apk"
-[ -n "$DG_KM_KEY_B64" ] && [ -n "$DG_KM_KEY_PASS" ] || { echo "Missing signing key configuration"; exit 1; }
-printf '%s' "$DG_KM_KEY_B64" | base64 -d > "$WORK/dg-key.p12"
+[ -n "$DG_KM_KEY_PASS" ] || { echo "Missing private signing passphrase"; exit 1; }
+KEY_BACKUP_URL="https://klein-manasseh-dg-chat-android-updates.onrender.com/release-key.enc"
+if curl -fsSL --max-time 20 "$KEY_BACKUP_URL" -o "$WORK/prior-key.enc"; then
+  openssl enc -aes-256-cbc -d -pbkdf2 -iter 200000 -in "$WORK/prior-key.enc" -out "$WORK/dg-key.p12" -pass env:DG_KM_KEY_PASS
+  echo "Reused encrypted release signing key"
+else
+  echo "Generating the first Klein Manasseh APK release key"
+  keytool -genkeypair -storetype PKCS12 -alias dg-klein-manasseh -keyalg RSA -keysize 3072 -validity 10000 -keystore "$WORK/dg-key.p12" -storepass "$DG_KM_KEY_PASS" -keypass "$DG_KM_KEY_PASS" -dname 'CN=Double Gee Tech,OU=DG Chat,O=Double Gee Tech,L=Harare,C=ZW' -noprompt
+fi
 chmod 600 "$WORK/dg-key.p12"
+openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt -in "$WORK/dg-key.p12" -out "$OUT/release-key.enc" -pass env:DG_KM_KEY_PASS
 "$SDK/apksigner" sign --ks "$WORK/dg-key.p12" --ks-type PKCS12 --ks-key-alias dg-klein-manasseh --ks-pass env:DG_KM_KEY_PASS --key-pass env:DG_KM_KEY_PASS --out "$OUT/Klein_Manasseh_DG_Chat_v1.1.0.apk" "$WORK/aligned.apk"
 "$SDK/apksigner" verify --verbose "$OUT/Klein_Manasseh_DG_Chat_v1.1.0.apk"
 "$SDK/aapt" dump badging "$OUT/Klein_Manasseh_DG_Chat_v1.1.0.apk" | head -5

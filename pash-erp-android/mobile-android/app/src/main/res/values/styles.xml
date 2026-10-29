@@ -1,0 +1,1 @@
+<resources><style name="PashTheme" parent="android:style/Theme.Material.Light.NoActionBar"><item name="android:colorAccent">#0872BE</item><item name="android:statusBarColor">#08182C</item><item name="android:navigationBarColor">#08182C</item><item name="android:windowLightStatusBar">false</item></style></resources>

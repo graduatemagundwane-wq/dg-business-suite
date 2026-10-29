@@ -1,0 +1,43 @@
+name: Build PASH Auto ERP Android APK (isolated)
+on:
+  push:
+    branches: [pash-auto-erp-android-build-20261030]
+    paths:
+      - 'pash-erp-android/**'
+      - '.github/workflows/pash-auto-erp-android.yml'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  android-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+      - name: Restore supplied PASH Auto logo
+        run: |
+          mkdir -p pash-erp-android/mobile-android/app/src/main/res/drawable
+          base64 --decode pash-erp-android/pash_icon.b64 > pash-erp-android/mobile-android/app/src/main/res/drawable/pash_icon.png
+      - name: Build Android APK
+        working-directory: pash-erp-android/mobile-android
+        run: gradle --no-daemon assembleDebug
+      - name: Validate APK file
+        run: |
+          test -s pash-erp-android/mobile-android/app/build/outputs/apk/debug/app-debug.apk
+          unzip -t pash-erp-android/mobile-android/app/build/outputs/apk/debug/app-debug.apk
+          sha256sum pash-erp-android/mobile-android/app/build/outputs/apk/debug/app-debug.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PASH-AUTO-ERP-Android-APK-Unsigned-for-Production
+          path: pash-erp-android/mobile-android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 14

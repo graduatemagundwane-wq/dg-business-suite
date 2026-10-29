@@ -1,0 +1,8 @@
+plugins { id 'com.android.application' }
+android {
+  namespace 'zw.co.pashauto.erp'
+  compileSdk 35
+  defaultConfig { applicationId 'zw.co.pashauto.erp'; minSdk 24; targetSdk 34; versionCode 4; versionName '0.4.0-test' }
+  buildTypes { debug { debuggable true }; release { minifyEnabled false } }
+  compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+}

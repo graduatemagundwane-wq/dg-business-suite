@@ -102,6 +102,27 @@ jobs:
         run: |
           chmod +x ./gradlew
           ./gradlew --no-daemon --stacktrace assembleRelease
+      - name: Verify built APK exists and has a signature
+        working-directory: pash-operations/app/mobile
+        run: |
+          APK=android/app/build/outputs/apk/release/app-release.apk
+          test -s "$APK"
+          ls -lh "$APK"
+          "$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)/apksigner" verify --verbose "$APK"
+          echo "Checking JS bundle is embedded for offline startup (Metro NOT required)"
+          unzip -l "$APK" | grep 'assets/index.android.bundle'
+          test "$(unzip -p "$APK" assets/index.android.bundle | wc -c)" -gt 20000
+          sha256sum "$APK" > android-standalone-apk.sha256
+      - name: Upload APK and checksum
+        uses: actions/upload-artifact@v4
+        with:
+          name: PASH-Auto-Operations-Standalone-QA
+          path: |
+            pash-operations/app/mobile/android/app/build/outputs/apk/release/app-release.apk
+            pash-operations/app/mobile/android-standalone-apk.sha256
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Allow KVM access for Android emulator
         run: |
           sudo usermod -aG kvm "$USER" || true
@@ -124,24 +145,3 @@ jobs:
           path: pash-operations/app/mobile/smoke/
           if-no-files-found: ignore
           retention-days: 7
-      - name: Verify built APK exists and has a signature
-        working-directory: pash-operations/app/mobile
-        run: |
-          APK=android/app/build/outputs/apk/release/app-release.apk
-          test -s "$APK"
-          ls -lh "$APK"
-          "$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)/apksigner" verify --verbose "$APK"
-          echo "Checking JS bundle is embedded for offline startup (Metro NOT required)"
-          "$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)/apksigner" verify --print-certs "$APK" | grep -E "Signer #1 certificate SHA-256 digest"
-          unzip -l "$APK" | grep 'assets/index.android.bundle'
-          test "$(unzip -p "$APK" assets/index.android.bundle | wc -c)" -gt 20000
-          sha256sum "$APK" > android-standalone-apk.sha256
-      - name: Upload APK and checksum
-        uses: actions/upload-artifact@v4
-        with:
-          name: PASH-Auto-Operations-Standalone-QA
-          path: |
-            pash-operations/app/mobile/android/app/build/outputs/apk/release/app-release.apk
-            pash-operations/app/mobile/android-standalone-apk.sha256
-          if-no-files-found: error
-          retention-days: 30

@@ -75,10 +75,10 @@ jobs:
           p=Path("pash-operations/app/mobile/app.json")
           cfg=json.loads(p.read_text())
           exp=cfg["expo"]
-          exp["version"]="0.5.2"
+          exp["version"]="0.5.3"
           exp["icon"]="./assets/icon.png"
           exp["android"]["icon"]="./assets/icon.png"
-          exp["android"]["versionCode"]=6
+          exp["android"]["versionCode"]=7
           exp["android"]["adaptiveIcon"]={"foregroundImage":"./assets/adaptive-icon.png","backgroundColor":"#FFFFFF"}
           exp["splash"]={"image":"./assets/splash.png","resizeMode":"contain","backgroundColor":"#FFFFFF"}
           p.write_text(json.dumps(cfg,indent=2))
@@ -153,6 +153,7 @@ jobs:
           ls -lh "$APK"
           "$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)/apksigner" verify --verbose "$APK"
           echo "Checking JS bundle is embedded for offline startup (Metro NOT required)"
+          "$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)/apksigner" verify --print-certs "$APK" | grep -E "Signer #1 certificate SHA-256 digest"
           unzip -l "$APK" | grep 'assets/index.android.bundle'
           test "$(unzip -p "$APK" assets/index.android.bundle | wc -c)" -gt 20000
           sha256sum "$APK" > android-standalone-apk.sha256

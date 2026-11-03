@@ -1,0 +1,59 @@
+name: Publish PASH Premium Mobile UI ZIP
+on:
+  push:
+    branches:
+      - pash-operations-premium-mobile-ui-20261103
+    paths:
+      - '.github/workflows/pash-premium-browser-release.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+  actions: read
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch tested premium APK from Android QA run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          mkdir -p premium-apk
+          gh run download 41616169330 --repo "$GH_REPO" --name PASH-Auto-Operations-Premium-UI-QA --dir premium-apk
+      - name: Verify signed release artifact and make single-APK ZIP
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib,zipfile
+          matches=list(Path('premium-apk').rglob('app-release.apk'))
+          assert len(matches)==1, f'Expected exactly one APK, found {len(matches)}'
+          apk=matches[0]
+          assert 70_000_000<apk.stat().st_size<160_000_000
+          expected=next(Path('premium-apk').rglob('android-standalone-apk.sha256')).read_text().split()[0]
+          actual=hashlib.sha256(apk.read_bytes()).hexdigest()
+          assert actual==expected, 'APK checksum mismatch'
+          name='PASH-Auto-Operations-Premium-UI-v0.6.0-QA-APK.zip'
+          with zipfile.ZipFile(name,'w',compression=zipfile.ZIP_DEFLATED,compresslevel=9) as z:
+              z.write(apk,'PASH-Auto-Operations-Premium-UI-v0.6.0-QA.apk')
+          with zipfile.ZipFile(name) as z:
+              assert z.testzip() is None
+              assert z.namelist()==['PASH-Auto-Operations-Premium-UI-v0.6.0-QA.apk']
+          print('Verified browser ZIP, bytes:',Path(name).stat().st_size)
+          print('APK SHA256:',actual)
+          PY
+      - name: Upload publicly downloadable QA ZIP to GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          TAG=pash-auto-operations-premium-ui-v0.6.0-qa-20261103
+          FILE=PASH-Auto-Operations-Premium-UI-v0.6.0-QA-APK.zip
+          if gh release view "$TAG" --repo "$GH_REPO" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$FILE" --clobber --repo "$GH_REPO"
+          else
+            gh release create "$TAG" "$FILE" --repo "$GH_REPO" \
+              --target pash-operations-premium-mobile-ui-20261103 \
+              --title "PASH Auto Operations v0.6.0 — Premium UI QA" \
+              --notes "Premium CEO/Worker/Manager mobile visual refresh and Android back navigation. Existing backend, roles, login and ERP business features remain unchanged. Contains a test-signed Android APK. Android 15 cold-start emulator test passed. Install over the existing app to preserve encrypted local drafts; do not uninstall first. QA release, not production certified." \
+              --prerelease
+          fi

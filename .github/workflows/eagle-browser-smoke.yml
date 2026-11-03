@@ -46,6 +46,8 @@ jobs:
                 await page.goto('http://127.0.0.1:18777/',{waitUntil:'domcontentloaded',timeout:30000});
                 await page.locator('.site-header').waitFor({timeout:15000});
                 await page.waitForTimeout(2350);
+                await page.waitForFunction(()=>Boolean(window.gsap&&window.ScrollTrigger),{timeout:15000});
+                console.log('PASS external GSAP ScrollTrigger loaded for viewport',viewport.width);
                 assert.equal(await page.locator('#eagle-opening').count(),0,'Loader removed');
                 assert.equal(await page.locator('#eagle-curtain').count(),1,'Curtain exists');
                 assert.equal(await page.locator('.service-card').count()>0,true,'Service cards intact');

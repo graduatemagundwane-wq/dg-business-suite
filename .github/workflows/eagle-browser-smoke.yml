@@ -26,6 +26,7 @@ jobs:
           grep -q 'eagle-opening' /tmp/eagle-home.html
           grep -q 'eagleInitMenu' /tmp/eagle-app.js
           grep -q 'eagle-menu.shown' /tmp/eagle-styles.css
+          for file in gsap.min.js ScrollTrigger.min.js lenis.min.js; do curl -fsS "http://127.0.0.1:18777/assets/vendor/$file" > /dev/null; done
           echo 'Original server live: HTML, JS and CSS resources verified'
       - name: Install headless browser
         run: |

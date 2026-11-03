@@ -54,12 +54,12 @@ function eagleLoadScript(src){
 }
 function eagleLoadMotionLibraries(){
  if(eagleMotionLibrariesRequested||eagleReduceMotion())return;eagleMotionLibrariesRequested=true;
- eagleLoadScript('https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js')
- .then(()=>eagleLoadScript('https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/ScrollTrigger.min.js'))
+ eagleLoadScript('/assets/vendor/gsap.min.js')
+ .then(()=>eagleLoadScript('/assets/vendor/ScrollTrigger.min.js'))
  .then(()=>{if(!window.gsap||!window.ScrollTrigger)return;window.gsap.registerPlugin(window.ScrollTrigger);eagleMotionReady=true;eagleAnimatePage();})
  .catch(()=>eagleFallbackReveal());
  if(window.matchMedia('(min-width: 951px) and (hover: hover) and (pointer: fine)').matches)
-   eagleLoadScript('https://cdn.jsdelivr.net/npm/lenis@1.3.27/dist/lenis.min.js').then(()=>{
+   eagleLoadScript('/assets/vendor/lenis.min.js').then(()=>{
      if(!window.Lenis||eagleSmoothScroll||eagleReduceMotion())return;
      eagleSmoothScroll=new window.Lenis({autoRaf:true,duration:1.12,smoothWheel:true,wheelMultiplier:.88});
      if(window.ScrollTrigger)eagleSmoothScroll.on('scroll',()=>window.ScrollTrigger.update());

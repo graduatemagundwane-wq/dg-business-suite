@@ -27,4 +27,4 @@ assert len(raw) < 2_000_000, "Unexpectedly large source bundle"
 archive.write_text(base64.b64encode(raw).decode("ascii") + "\n")
 print(f"Rebuilt {archive} with {len(paths)} source files; ZIP {len(raw)} bytes")
 
-# Android QA stability revision 20261103
+# Android QA stability revision 20261103; verified menu label regression 20261103

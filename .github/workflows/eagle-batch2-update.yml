@@ -1,0 +1,99 @@
+name: Eagle Construction Batch 2 Image Update
+on:
+  push:
+    branches: [deploy-eagle-construction-site-20261103]
+    paths: ['.github/workflows/eagle-batch2-update.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  update-batch2-images:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - name: Replace Batch 2 photos only inside original website package
+        env:
+          SOURCE_COLLAGE_URL: "https://m.invideo.io/uploads/d56f613c-a08d-425f-861d-8aa7e2f017b4/d56f613c-a08d-425f-861d-8aa7e2f017b4?Expires=1793791746&Signature=TqG2IzANRoOB6Jb9xNzpkXrLPIyQDp8drFB6wV2Pfa23w7n1d~jaz05fpEJi-nb9k4jNY6HE9jaW1WtwXYvEp0q5vL8ApyJXb92T-WtVW-bE9DILu5ebDYV~5fv7Wyg4EjbN7FtVmGuiNtvPRaRh6b17sd4Wx0JaNw5ly6HXWRVTurk8IaIM6QxTeRogjha1dG4sywzaCDFZWY2Fa3cRntqp95W3wTqawqJFFuO9ACE3oS6qbLURjqrYrvE2rOkhn~oxtXFsfJX50yI4kdZbsK0GltGZpeJUYb0PHvT5B8Y993CxOeY1hI0Y7Q5rE6NZYmweHvYhKIGLbwUhjSSfwA__&Key-Pair-Id=KX9I6OACHF5M3"
+        run: |
+          python3 -m pip install --quiet pillow
+          python3 - <<'PY'
+          import os, re, io, zipfile, urllib.request, hashlib
+          from PIL import Image, ImageFilter, ImageFile
+          Image.MAX_IMAGE_PIXELS=25000000
+          url=os.environ['SOURCE_COLLAGE_URL']
+          req=urllib.request.Request(url,headers={'User-Agent':'Mozilla/5.0'})
+          with urllib.request.urlopen(req,timeout=60) as response:
+            source_bytes=response.read()
+          source=Image.open(io.BytesIO(source_bytes)).convert('RGB')
+          assert source.size == (1536,1024), source.size
+          image_root='eagle-construction-website/assets/'
+          crops={
+            'tiling.webp':(3,5,302,486),
+            'roofing.webp':(317,5,607,486),
+            'electrical.webp':(619,5,929,486),
+            'solar.webp':(942,5,1223,486),
+            'painting.webp':(1236,5,1533,486),
+            'interior-finishes.webp':(4,510,301,1020),
+            'exterior-finishes.webp':(319,510,607,1020),
+            'bathroom-renovations.webp':(619,510,920,1020),
+            'project-management.webp':(935,510,1222,1020),
+            'project-pool.webp':(1237,510,1534,1020),
+            'house-feature.webp':(1237,510,1534,1020),
+          }
+          replacements={}
+          for name,bbox in crops.items():
+            picture=source.crop(bbox)
+            picture=picture.resize((picture.width*3,picture.height*3),Image.Resampling.LANCZOS)
+            picture=picture.filter(ImageFilter.UnsharpMask(radius=1.0,percent=75,threshold=3))
+            out=io.BytesIO()
+            picture.save(out,format='WEBP',quality=95,method=6)
+            replacements[image_root+name]=out.getvalue()
+            print('NEW PHOTO',name,picture.size,len(out.getvalue()))
+          src='eagle-site.zip'
+          with zipfile.ZipFile(src,'r') as z:
+            entries=[(info,z.read(info.filename)) for info in z.infolist()]
+          existing={i.filename for i,_ in entries}
+          assert set(replacements).issubset(existing),'Missing image paths: '+str(set(replacements)-existing)
+          app_path='eagle-construction-website/app.js'
+          html_path='eagle-construction-website/index.html'
+          assert app_path in existing and html_path in existing
+          app=next(data for info,data in entries if info.filename==app_path).decode('utf8')
+          html=next(data for info,data in entries if info.filename==html_path).decode('utf8')
+          original_pattern=r'const asset\s*=\s*name\s*=>\s*`/assets/\$\{name\}\.webp(?:\?[^\\`]+)?`'
+          new_asset='const asset = name => `/assets/\${name}.webp?v=eagle-b2-20261103`'
+          app,app_count=re.subn(original_pattern,lambda m:new_asset,app,count=1)
+          assert app_count==1,'Failed to set asset cache-busting URL'
+          html,html_count=re.subn(r'/app\.js(?:\?[^"\s]+)?(?=")', '/app.js?v=eagle-b2-20261103',html)
+          assert html_count>=1,'Could not refresh main application cache'
+          replacements[app_path]=app.encode('utf8')
+          replacements[html_path]=html.encode('utf8')
+          with zipfile.ZipFile(src+'.new','w') as out:
+            for info,data in entries:
+              out.writestr(info,replacements.get(info.filename,data))
+          with zipfile.ZipFile(src+'.new','r') as z:
+            assert z.testzip() is None
+            assert len(z.infolist())==len(entries)
+            for name,blob in replacements.items():
+              assert z.read(name)==blob, 'Mismatch '+name
+          os.replace(src+'.new',src)
+          print('PASS: 11 image slots refreshed with 10 Batch 2 photos; markup unchanged except app.js URL cache-busting')
+          PY
+      - name: Syntax check and site tests
+        run: |
+          cd eagle-construction-website 2>/dev/null || { mkdir -p eagle-construction-website; cd eagle-construction-website; }
+          cd ..
+          unzip -qo eagle-site.zip -d /tmp/eagle-batch2-test
+          node --check /tmp/eagle-batch2-test/eagle-construction-website/app.js
+          node --check /tmp/eagle-batch2-test/eagle-construction-website/server.mjs
+          cd /tmp/eagle-batch2-test/eagle-construction-website
+          node --test tests.mjs
+      - name: Commit image-only package update
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add eagle-site.zip
+          if git diff --cached --quiet; then echo 'No changes detected'; exit 1; fi
+          git commit -m 'Eagle Construction: install Batch 2 images without design changes'
+          git push origin HEAD:deploy-eagle-construction-site-20261103

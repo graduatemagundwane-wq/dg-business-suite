@@ -613,6 +613,10 @@ def attendance_record(a):
                'decision_by','decision_at','decision_note','unpaid_break_minutes')
     start=as_utc(a.clock_in)
     end=as_utc(a.clock_out) if a.clock_out else None
+    # SQLite may return naive timestamps; always emit canonical UTC instants.
+    result['clock_in']=start.isoformat()
+    result['clock_out']=end.isoformat() if end else None
+    result['decision_at']=as_utc(a.decision_at).isoformat() if a.decision_at else None
     raw=max(0,int((end-start).total_seconds()//60)) if end else None
     net=max(0,raw-a.unpaid_break_minutes) if raw is not None else None
     result['worked_minutes']=net

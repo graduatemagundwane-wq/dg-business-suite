@@ -1,0 +1,88 @@
+name: Eagle UI Browser Smoke Test
+on:
+  push:
+    branches: [eagle-motion-menu-loader-20261103]
+    paths: ['.github/workflows/eagle-browser-smoke.yml']
+permissions:
+  contents: read
+jobs:
+  browser-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Unpack exact deployed website
+        run: |
+          unzip -qo eagle-site.zip -d /tmp/eagle-live-test
+          cd /tmp/eagle-live-test/eagle-construction-website
+          PORT=18777 node server.mjs > /tmp/eagle-test-server.log 2>&1 &
+          for i in $(seq 1 25); do
+            if curl -sS -o /dev/null -f http://127.0.0.1:18777/; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:18777/ > /tmp/eagle-home.html
+          curl -fsS http://127.0.0.1:18777/app.js > /tmp/eagle-app.js
+          curl -fsS http://127.0.0.1:18777/styles.css > /tmp/eagle-styles.css
+          grep -q 'eagle-opening' /tmp/eagle-home.html
+          grep -q 'eagleInitMenu' /tmp/eagle-app.js
+          grep -q 'eagle-menu.shown' /tmp/eagle-styles.css
+          echo 'Original server live: HTML, JS and CSS resources verified'
+      - name: Install headless browser
+        run: |
+          npm install --prefix /tmp/eagle-playwright --no-audit --no-fund playwright@latest
+          /tmp/eagle-playwright/node_modules/.bin/playwright install chromium
+      - name: Verify desktop, mobile, links and forms
+        run: |
+          cat > /tmp/eagle-browser.cjs <<'JS'
+          const {chromium}=require('/tmp/eagle-playwright/node_modules/playwright');
+          const assert=require('node:assert/strict');
+          (async()=>{
+            const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
+            try{
+              for(const viewport of [{width:1366,height:860},{width:390,height:844}]){
+                const page=await browser.newPage({viewport});
+                const errors=[];
+                page.on('pageerror',e=>errors.push(e.message));
+                await page.goto('http://127.0.0.1:18777/',{waitUntil:'domcontentloaded',timeout:30000});
+                await page.locator('.site-header').waitFor({timeout:15000});
+                await page.waitForTimeout(2350);
+                assert.equal(await page.locator('#eagle-opening').count(),0,'Loader removed');
+                assert.equal(await page.locator('#eagle-curtain').count(),1,'Curtain exists');
+                assert.equal(await page.locator('.service-card').count()>0,true,'Service cards intact');
+                await page.locator('#menu-toggle').click({timeout:12000});
+                assert.equal(await page.locator('#mobile-nav').evaluate(el=>el.classList.contains('shown')),true,'Menu opens');
+                await page.locator('#mobile-nav a[href="/about"]').click({timeout:12000});
+                await page.waitForURL('**/about',{timeout:15000});
+                await page.waitForTimeout(1250);
+                assert.equal(await page.locator('h1').first().textContent().then(s=>s.includes('About Eagle')),true,'About route');
+                await page.locator('#menu-toggle').click({timeout:12000});
+                await page.locator('#mobile-nav a[href="/services"]').click({timeout:12000});
+                await page.waitForURL('**/services',{timeout:15000});
+                await page.waitForTimeout(1250);
+                assert.equal(await page.locator('h1').first().textContent().then(s=>s.includes('Construction')),true,'Services route');
+                await page.evaluate(()=>window.scrollTo(0,500));
+                await page.waitForTimeout(220);
+                assert.equal(await page.locator('#eagle-progress').count(),1);
+                await page.locator('.brand').click({timeout:12000});
+                await page.waitForURL('http://127.0.0.1:18777/',{timeout:15000});
+                await page.locator('[data-modal="visit"]').first().click({timeout:12000});
+                assert.equal(await page.locator('#visit-modal').isVisible(),true,'Site visit modal opens');
+                await page.locator('#modal-close').click({timeout:12000});
+                assert.equal(await page.locator('#visit-modal').isVisible(),false,'Site visit modal closes');
+                assert.deepEqual(errors,[],'No JavaScript errors');
+                console.log('PASS viewport',viewport.width,'menu, routes, loader, scroll, form modal');
+                await page.close();
+              }
+              const page=await browser.newPage({reducedMotion:'reduce'});
+              await page.goto('http://127.0.0.1:18777/',{waitUntil:'domcontentloaded'});
+              await page.locator('.site-header').waitFor();
+              await page.locator('#menu-toggle').click();
+              await page.locator('#mobile-nav a[href="/contact"]').click();
+              await page.waitForURL('**/contact');
+              assert.equal(await page.locator('#eagle-curtain').evaluate(el=>el.classList.contains('is-in')),false);
+              console.log('PASS reduced-motion route access');
+              await page.close();
+            }finally{await browser.close();}
+          })().catch(e=>{console.error(e);process.exit(1)});
+          JS
+          node /tmp/eagle-browser.cjs

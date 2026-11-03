@@ -1,0 +1,13 @@
+# New isolated staging service template. No automatic deployment from this ZIP.
+services:
+  - type: web
+    name: pash-auto-operations-qa
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/health
+    autoDeployTrigger: off
+    envVars:
+      - key: PASH_JWT_SECRET
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false

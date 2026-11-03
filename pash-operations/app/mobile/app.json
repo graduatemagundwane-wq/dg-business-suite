@@ -1,0 +1,39 @@
+{
+  "expo": {
+    "name": "PASH Auto Operations",
+    "slug": "pash-auto-operations",
+    "version": "0.5.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "android": {
+      "package": "zw.co.doublegeetech.pashauto.operations",
+      "versionCode": 5,
+      "permissions": [
+        "CAMERA"
+      ]
+    },
+    "plugins": [
+      "expo-secure-store",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "PASH Auto needs the camera to scan vehicle and spare-part barcodes."
+        }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Allow PASH Auto Operations to use biometric unlock."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "Allow PASH Auto to photograph vehicle condition and workshop repair evidence.",
+          "photosPermission": "Allow PASH Auto to attach existing workshop repair photographs.",
+          "microphonePermission": false
+        }
+      ]
+    ]
+  }
+}

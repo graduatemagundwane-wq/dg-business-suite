@@ -1,0 +1,25 @@
+{
+  "name": "pash-auto-operations-mobile",
+  "version": "0.5.0",
+  "private": true,
+  "main": "expo/AppEntry",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "build:android": "eas build --platform android --profile preview"
+  },
+  "dependencies": {
+    "expo": "~54.0.0",
+    "react": "19.1.0",
+    "react-native": "0.81.5",
+    "expo-secure-store": "~15.0.7",
+    "expo-status-bar": "~3.0.9",
+    "expo-camera": "~17.0.10",
+    "expo-local-authentication": "~17.0.7",
+    "expo-image-picker": "~17.0.11"
+  },
+  "devDependencies": {
+    "typescript": "~5.9.2",
+    "@types/react": "~19.1.10"
+  }
+}

@@ -115,28 +115,7 @@ jobs:
           profile: pixel_6
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect
           disable-animations: true
-          script: |
-            set -eu
-            mkdir -p pash-operations/app/mobile/smoke
-            APK=pash-operations/app/mobile/android/app/build/outputs/apk/release/app-release.apk
-            adb install -r "$APK"
-            adb logcat -c
-            adb shell am start -n zw.co.doublegeetech.pashauto.operations/.MainActivity
-            sleep 15
-            adb shell screencap -p /sdcard/pash-smoke.png
-            adb pull /sdcard/pash-smoke.png pash-operations/app/mobile/smoke/launch.png || true
-            adb logcat -d -v threadtime > pash-operations/app/mobile/smoke/logcat.txt
-            adb shell pidof zw.co.doublegeetech.pashauto.operations > pash-operations/app/mobile/smoke/pid.txt || {
-              echo "PASH Auto Operations crashed or quit at startup"
-              grep -E -A 18 'FATAL EXCEPTION|AndroidRuntime|ReactNativeJS|ReactNative' pash-operations/app/mobile/smoke/logcat.txt | tail -n 100 || true
-              exit 1
-            }
-            if grep -E 'FATAL EXCEPTION|Process: zw.co.doublegeetech.pashauto.operations' pash-operations/app/mobile/smoke/logcat.txt | grep -q -E 'FATAL EXCEPTION|Process:'; then
-              echo "Android runtime crash detected in app startup log"
-              grep -E -A 20 'FATAL EXCEPTION|Process: zw.co.doublegeetech.pashauto.operations' pash-operations/app/mobile/smoke/logcat.txt | tail -n 100 || true
-              exit 1
-            fi
-            echo "APK is alive 15 seconds after cold startup"
+          script: bash pash-operations/tools/qa_android_smoke.sh
       - name: Upload Android runtime smoke diagnostics
         if: always()
         uses: actions/upload-artifact@v4

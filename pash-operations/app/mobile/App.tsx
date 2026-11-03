@@ -10,8 +10,14 @@ type Json = Record<string,any>;
 const API=(process.env.EXPO_PUBLIC_API_URL || '').replace(/\/$/,'');
 const FIXED_ORG=(process.env.EXPO_PUBLIC_ORGANIZATION_ID || '').trim();
 const ENV_OK=API.startsWith('https://') || (__DEV__ && API.startsWith('http://'));
+const SYMBOLS:Record<string,string>={
+  dashboard:'⌂',account:'◉',attendance:'◷',teamattendance:'✓',customers:'♙',vehicles:'▣',bookings:'▤',jobs:'⚙',inspections:'◇',worklogs:'◷',
+  gearboxreports:'⚙',batteryreports:'▰',qualifications:'✦',safetypermits:'✓',equipment:'▣',parts:'▦',suppliers:'♙',purchaseorders:'▤',
+  quotes:'▧',invoices:'▤',expenses:'◈',warranties:'✓',claims:'◇',reviews:'★',courses:'▣',lessons:'▤',assessments:'✓',enrollments:'♙',
+  certificates:'✦',staffusers:'♙',fleets:'▣',notifications:'◉'
+};
 const STATUS_LABEL:Record<string,string>={received:'Received',diagnosis:'Diagnosis',awaiting_approval:'Awaiting customer approval',awaiting_parts:'Awaiting parts',repairing:'Repair in progress',quality_check:'Quality inspection',ready:'Ready for collection',delivered:'Delivered'};
-const C={bg:'#F4F7F8',dark:'#101A25',muted:'#87949D',teal:'#159E86',white:'#FFFFFF',line:'#E4ECED',gold:'#D9AC60'};
+const C={bg:'#F4F7FB',dark:'#08182A',muted:'#708397',teal:'#11A28B',blue:'#116EEA',paleBlue:'#EAF3FF',white:'#FFFFFF',line:'#E2EAF2',gold:'#D9AC60'};
 const MENU:Record<string,string[]> = {
   staffusers:['owner','manager'],
   account:['owner','manager','service_advisor','mechanic','dsg_specialist','battery_specialist','inventory','accountant','instructor','student','customer'],
@@ -402,17 +408,54 @@ function OperationsApp(){
     'Training academy':['courses','lessons','assessments','enrollments','certificates'],
     'Corporate & communications':['staffusers','fleets','notifications']
   };
-  return <SafeAreaView style={styles.root}><StatusBar barStyle="light-content"/>
-    <View style={styles.header}><Text style={styles.brandSmall}>PASH<Text style={{color:C.teal}}> / </Text>AUTO</Text><Text style={styles.headerSub}>{profile.name.toUpperCase()}  •  {roles.join(' + ')}</Text><Text style={styles.screenTitle}>{showMenu?'My workspaces':LABELS[tab]}</Text>
-      <Pressable onPress={()=>{setShowMenu(!showMenu);setCompose(false);setAction(null)}} style={styles.menuButton}><Text style={styles.menuText}>{showMenu?'← CURRENT WORKSPACE':'☰  ALL WORKSPACES'}</Text></Pressable>
+  const navLinks=[
+    {key:'dashboard',label:'Home',icon:'⌂'},
+    ...(allowed('jobs')?[{key:'jobs',label:'Jobs',icon:'⚙'}]:[]),
+    ...(allowed('teamattendance')?[{key:'teamattendance',label:'Approvals',icon:'✓'}]:allowed('attendance')?[{key:'attendance',label:'Attendance',icon:'◷'}]:[]),
+    ...(allowed('parts')?[{key:'parts',label:'Stock',icon:'▦'}]:allowed('invoices')?[{key:'invoices',label:'Invoices',icon:'▤'}]:[]),
+    {key:'more',label:'More',icon:'☰'}
+  ];
+  const roleLabel=roles.includes('owner')?'CEO':roles.includes('manager')?'Manager':(roles[0]||'Staff').replace(/_/g,' ');
+  const initials=profile.name.split(' ').filter(Boolean).slice(0,2).map((x:string)=>x[0].toUpperCase()).join('')||'PA';
+  return <SafeAreaView style={styles.root}><StatusBar barStyle="light-content" backgroundColor={C.dark}/>
+    <View style={styles.header}>
+      <View style={styles.brandLine}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Open home" onPress={()=>navigateTo('dashboard')} style={styles.brandHit}>
+          <Text style={styles.brandSmall}>PASH<Text style={{color:C.blue}}> / </Text>AUTO</Text>
+          <Text style={styles.brandTag}>EV & HYBRID CENTRE  •  OPERATIONS</Text>
+        </Pressable>
+        <View style={styles.headerActions}>
+          {allowed('notifications')?<Pressable accessibilityRole="button" accessibilityLabel="Open notifications" onPress={()=>navigateTo('notifications')} style={styles.headerIcon}><Text style={styles.headerIconText}>◉</Text></Pressable>:null}
+          <Pressable accessibilityRole="button" accessibilityLabel="Open account settings" onPress={()=>navigateTo('account')} style={styles.avatar}><Text style={styles.avatarText}>{initials}</Text></Pressable>
+        </View>
+      </View>
+      <View style={styles.headerTitleLine}>
+        {showMenu||tab!=='dashboard'?<Pressable accessibilityRole="button" accessibilityLabel="Back to previous screen" onPress={navigateBack} style={styles.backButton}><Text style={styles.backSymbol}>‹</Text></Pressable>:null}
+        <View style={{flex:1}}>
+          <Text style={styles.headerSub}>{roleLabel.toUpperCase()}  /  {profile.name}</Text>
+          <Text style={styles.screenTitle}>{showMenu?'All workspaces':tab==='dashboard'?(roles.includes('owner')?'CEO Dashboard':'My Dashboard'):LABELS[tab]}</Text>
+        </View>
+      </View>
     </View>
-    {showMenu?<ScrollView contentContainerStyle={styles.page}><Text style={styles.heading}>Choose your workspace</Text><Text style={styles.explain}>Only workspaces authorized for your account are available. PASH Auto staff operations.</Text>
-        <Field label="Search workspaces" value={menuSearch} set={setMenuSearch}/>
+    {showMenu?<ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.page}>
+        <Text style={styles.heading}>Explore your workspaces</Text>
+        <Text style={styles.explain}>Every module you are authorized to use, grouped for faster access.</Text>
+        <Field label="Search modules" value={menuSearch} set={setMenuSearch}/>
         {Object.entries(categories).map(([group,entries])=>{
           const available=entries.filter(key=>tabs.includes(key)&&LABELS[key].toLowerCase().includes(menuSearch.toLowerCase()));
           if(!available.length)return null;
-          return <View key={group} style={{marginBottom:18}}><Text style={styles.sectionHeading}>{group}</Text><View style={styles.workspaceGrid}>{available.map(key=><Pressable accessibilityRole="button" accessibilityLabel={'Open '+LABELS[key]} key={key} onPress={()=>{setTab(key);setShowMenu(false);setForm({});setCompose(false);setAction(null)}} style={styles.workspaceCard}><Text style={styles.workspaceCardTitle}>{LABELS[key]}</Text><Text style={styles.workspaceCaption}>OPEN WORKSPACE  ↗</Text></Pressable>)}</View></View>;
+          return <View key={group} style={styles.moduleGroup}>
+            <Text style={styles.sectionHeading}>{group}</Text>
+            <View style={styles.workspaceList}>
+              {available.map(key=><Pressable key={key} accessibilityRole="button" accessibilityLabel={'Open '+LABELS[key]} style={styles.workspaceRow} onPress={()=>navigateTo(key)}>
+                <View style={styles.workspaceIcon}><Text style={styles.workspaceIconText}>{SYMBOLS[key]||'◈'}</Text></View>
+                <Text style={styles.workspaceCardTitle}>{LABELS[key]}</Text>
+                <Text style={styles.workspaceChevron}>›</Text>
+              </Pressable>)}
+            </View>
+          </View>;
         })}
+        <Text style={styles.powered}>POWERED BY DOUBLE GEE TECH</Text>
       </ScrollView>:
     tab==='account'?<ScrollView contentContainerStyle={styles.page}><Text style={styles.heading}>Account & security</Text>
         <Text style={styles.explain}>{profile.name} • {roles.join(' + ')}</Text>
@@ -423,10 +466,43 @@ function OperationsApp(){
         </View><Button secondary label="Sign out of all devices" onPress={logout}/>
       </ScrollView>:
     tab==='dashboard'?<ScrollView refreshControl={<RefreshControl refreshing={refreshing} onRefresh={()=>load(tab)}/>} contentContainerStyle={styles.page}>
-      <Text style={styles.heading}>Welcome, {profile.name.split(' ')[0]}.</Text><Text style={styles.explain}>Verified records in your authorized company workspace.</Text>
-      {error?<View style={styles.error}><Text style={styles.errorText}>{error}</Text><Button secondary label="Try again" onPress={()=>load(tab)}/></View>:null}
-      <View style={styles.grid}>{Object.entries(summary).filter(([k,v])=>typeof v==='number').map(([k,v])=><View key={k} style={styles.metric}><Text style={styles.metricValue}>{String(v)}</Text><Text style={styles.metricLabel}>{k.replace(/_/g,' ').toUpperCase()}</Text></View>)}</View>
-      <View style={styles.card}><Text style={styles.cardTitle}>Your authorized roles</Text><Text style={styles.explain}>{roles.join(' • ')}</Text><Button secondary label="View all workspaces" onPress={()=>setShowMenu(true)}/><Button secondary label={biometricEnabled?"Disable biometric unlock":"Enable biometric unlock"} onPress={biometricEnabled?disableBiometrics:enableBiometrics}/></View>
+      <View style={styles.dashboardIntro}>
+        <View style={{flex:1}}>
+          <Text style={styles.dashboardEyebrow}>PASH AUTO  /  {roleLabel.toUpperCase()} COMMAND CENTRE</Text>
+          <Text style={styles.heading}>Welcome, {profile.name.split(' ')[0]}.</Text>
+          <Text style={styles.explain}>Your verified business overview, available in one place.</Text>
+        </View>
+        <View style={styles.liveTag}><View style={styles.liveDot}/><Text style={styles.liveLabel}>LIVE</Text></View>
+      </View>
+      {error?<View style={styles.error}><Text style={styles.errorText}>{error}</Text><Button secondary label="Retry dashboard" onPress={()=>load(tab)}/></View>:null}
+      <Text style={styles.sectionHeading}>LIVE OVERVIEW</Text>
+      <View style={styles.grid}>{Object.entries(summary).filter(([k,v])=>typeof v==='number').map(([k,v],index)=>
+        <View key={k} style={styles.metric}>
+          <View style={[styles.metricIcon,{backgroundColor:index%3===1?'#E8F7F3':index%3===2?'#FFF3E6':C.paleBlue}]}>
+            <Text style={[styles.metricIconText,{color:index%3===1?C.teal:index%3===2?'#DA8A29':C.blue}]}>{SYMBOLS[k]||'▣'}</Text>
+          </View>
+          <Text style={styles.metricValue}>{String(v)}</Text>
+          <Text style={styles.metricLabel}>{k.replace(/_/g,' ')}</Text>
+        </View>
+      )}</View>
+      <Text style={[styles.sectionHeading,{marginTop:22}]}>WORKSPACE SHORTCUTS</Text>
+      <View style={styles.shortcuts}>
+        {['jobs','vehicles','teamattendance','parts','quotes','invoices','staffusers','notifications'].filter(allowed).map(key=>
+          <Pressable key={key} accessibilityRole="button" accessibilityLabel={'Open '+LABELS[key]} onPress={()=>navigateTo(key)} style={styles.shortcutRow}>
+            <View style={styles.shortcutIcon}><Text style={styles.shortcutIconText}>{SYMBOLS[key]||'▣'}</Text></View>
+            <Text style={styles.shortcutLabel}>{LABELS[key]}</Text><Text style={styles.workspaceChevron}>›</Text>
+          </Pressable>
+        )}
+        <Pressable accessibilityRole="button" onPress={openWorkspaces} style={styles.shortcutRow}>
+          <View style={styles.shortcutIcon}><Text style={styles.shortcutIconText}>☰</Text></View>
+          <Text style={styles.shortcutLabel}>All workspaces</Text><Text style={styles.workspaceChevron}>›</Text>
+        </Pressable>
+      </View>
+      <View style={styles.roleCard}>
+        <Text style={styles.roleCardTitle}>SECURE BUSINESS ACCESS</Text>
+        <Text style={styles.roleCardText}>Signed in as {roleLabel}. Your roles and permissions remain enforced by the ERP server.</Text>
+        <Pressable onPress={()=>navigateTo('account')} accessibilityRole="button"><Text style={styles.linkText}>Account & security  ›</Text></Pressable>
+      </View>
     </ScrollView>:
     <FlatList contentContainerStyle={styles.page} data={rows} keyExtractor={(item,index)=>String(item.id||index)} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={()=>load(tab)}/>}
       ListHeaderComponent={<>
@@ -468,7 +544,16 @@ function OperationsApp(){
         </View>:null}
       </View>}
     />}
-    <View style={styles.bottom}><Text style={styles.bottomText}>PASH AUTO OPERATIONS  •  DOUBLE GEE TECH</Text><Pressable onPress={logout}><Text style={styles.logout}>SIGN OUT</Text></Pressable></View>
+    <View style={styles.bottomNav}>
+      {navLinks.map(item=>{
+        const active=showMenu?item.key==='more':tab===item.key;
+        return <Pressable key={item.key} accessibilityRole="button" accessibilityLabel={item.label} accessibilityState={{selected:active}} onPress={()=>item.key==='more'?openWorkspaces():navigateTo(item.key)} style={styles.bottomItem}>
+          <Text style={[styles.bottomIcon,active?styles.bottomActiveText:null]}>{item.icon}</Text>
+          <Text style={[styles.bottomLabel,active?styles.bottomActiveText:null]}>{item.label}</Text>
+          {active?<View style={styles.bottomActiveDot}/>:null}
+        </Pressable>;
+      })}
+    </View>
   </SafeAreaView>;
 }
 /**

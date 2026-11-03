@@ -18,6 +18,7 @@ import android.webkit.DownloadListener;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceError;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.webkit.SslErrorHandler;
@@ -27,9 +28,10 @@ public class MainActivity extends Activity {
  private WebView web;
  private ValueCallback<Uri[]> fileCallback;
  private static final int FILE_PICKER = 73;
+ private static final String DEFAULT_ERP_URL="https://pash-auto-operations-qa.onrender.com";
  private String companyUrl="";
  @Override public void onCreate(Bundle state){super.onCreate(state);
-   companyUrl=getPreferences(0).getString("pash_company_url","");
+   companyUrl=getPreferences(0).getString("pash_company_url",DEFAULT_ERP_URL);
    LinearLayout layout=new LinearLayout(this);layout.setOrientation(LinearLayout.VERTICAL);
    ProgressBar progress=new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);progress.setIndeterminate(true);progress.setVisibility(View.GONE);
    layout.addView(progress,new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,4));
@@ -45,6 +47,9 @@ public class MainActivity extends Activity {
        if("https".equalsIgnoreCase(uri.getScheme())&&base.getHost()!=null&&base.getHost().equalsIgnoreCase(uri.getHost()))return false;
        try{startActivity(new Intent(Intent.ACTION_VIEW,uri));}catch(Exception ignored){}return true;}
       @Override public void onReceivedSslError(WebView view,SslErrorHandler handler,SslError error){handler.cancel();new AlertDialog.Builder(MainActivity.this).setTitle("Connection not secure").setMessage("The PASH ERP server failed its TLS certificate check. Connection blocked.").setPositiveButton("OK",(d,w)->{}).show();}
+      @Override public void onReceivedError(WebView view,WebResourceRequest request,WebResourceError error){
+        if(request.isForMainFrame())new AlertDialog.Builder(MainActivity.this).setTitle("PASH ERP connection unavailable").setMessage("Unable to open the administration server. Check your internet connection or verify the server address.").setPositiveButton("Retry",(d,w)->web.reload()).setNeutralButton("Change server",(d,w)->configureServer()).setNegativeButton("Close",null).show();
+      }
    });
    web.setWebChromeClient(new WebChromeClient(){
        @Override public void onProgressChanged(WebView v,int newProgress){progress.setVisibility(newProgress>=100?View.GONE:View.VISIBLE);}

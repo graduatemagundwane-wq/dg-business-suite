@@ -1,0 +1,73 @@
+
+/* EAGLE / INTERACTIONS ONLY. Original layout, palette and content untouched. */
+.desktop-nav{display:none!important}
+.menu-toggle{display:inline-flex!important;align-items:center;justify-content:center;gap:11px;min-width:112px;height:43px;border:1px solid rgba(7,27,49,.18);border-radius:6px;padding:8px 13px;flex-shrink:0;color:var(--navy);background:#fff;transition:border-color .25s,transform .25s,background .25s}
+.menu-toggle:hover{border-color:var(--yellow);background:#fff9e9;transform:translateY(-1px)}
+.eagle-toggle-label{font-size:10px;font-weight:800;letter-spacing:.17em;text-transform:uppercase}
+.eagle-toggle-lines{position:relative;width:25px;height:18px;display:block}
+.eagle-toggle-lines:before,.eagle-toggle-lines:after,.eagle-toggle-lines i{content:"";height:2px;display:block;position:absolute;right:0;background:var(--navy);border-radius:2px;transition:transform .35s,top .35s,opacity .25s}
+.eagle-toggle-lines:before{width:25px;top:2px}.eagle-toggle-lines i{width:18px;top:8px}.eagle-toggle-lines:after{width:25px;top:14px}
+.menu-toggle[aria-expanded="true"] .eagle-toggle-lines:before{top:8px;transform:rotate(45deg)}.menu-toggle[aria-expanded="true"] .eagle-toggle-lines:after{top:8px;transform:rotate(-45deg)}.menu-toggle[aria-expanded="true"] .eagle-toggle-lines i{opacity:0}
+.eagle-menu{display:none;position:fixed;inset:0;width:100%;height:100vh;height:100dvh;z-index:9000;color:#fff;background:#071b31;overflow:auto;overscroll-behavior:contain;isolation:isolate}
+.eagle-menu.shown{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(310px,.75fr);animation:eagleMenuAppear .56s cubic-bezier(.19,1,.22,1) both}
+.eagle-menu:before{content:"";position:absolute;inset:0;opacity:.22;pointer-events:none;z-index:-1;background-image:linear-gradient(rgba(255,255,255,.13) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.13) 1px,transparent 1px);background-size:48px 48px;mask-image:linear-gradient(130deg,transparent,#000 75%)}
+.eagle-menu:after{content:"";position:absolute;right:-170px;top:-170px;width:410px;height:410px;border:1px solid rgba(245,189,27,.23);border-radius:50%;box-shadow:0 0 0 50px rgba(245,189,27,.025),0 0 0 100px rgba(245,189,27,.025);pointer-events:none;z-index:-1}
+.eagle-menu-main{padding:clamp(85px,10vh,135px) clamp(26px,6vw,110px) 50px clamp(25px,8vw,132px);display:flex;flex-direction:column;justify-content:center}
+.eagle-menu-tag,.eagle-menu-side-tag{color:var(--yellow);font-size:11px;font-weight:800;letter-spacing:.25em;text-transform:uppercase}
+.eagle-menu-list{display:flex;flex-direction:column;margin-top:27px}
+.eagle-menu-link{display:flex;gap:clamp(14px,2vw,30px);align-items:baseline;padding:6px 0 11px;width:100%;border-bottom:1px solid rgba(255,255,255,.13);color:white!important;position:relative;text-decoration:none;transition:padding-left .34s,color .27s}
+.eagle-menu-link:before{content:"";position:absolute;height:1px;background:var(--yellow);left:0;bottom:-1px;width:0;transition:width .4s}
+.eagle-menu-link:hover,.eagle-menu-link:focus-visible{padding-left:15px;color:var(--yellow)!important}
+.eagle-menu-link:hover:before,.eagle-menu-link:focus-visible:before{width:100%}
+.eagle-menu-no{font-size:11px;font-weight:800;color:var(--yellow);flex-shrink:0}
+.eagle-menu-name{font:700 clamp(26px,3.45vw,54px)/1.26 'Libre Baskerville',Georgia,serif;letter-spacing:-.052em}
+.eagle-menu-link.is-current .eagle-menu-name{color:var(--yellow)}
+.eagle-menu-side{display:flex;flex-direction:column;justify-content:center;gap:17px;padding:110px clamp(25px,4vw,65px) 45px;border-left:1px solid rgba(255,255,255,.14);background:linear-gradient(145deg,rgba(14,49,76,.7),rgba(4,18,32,.5))}
+.eagle-menu-emblem{width:98px;height:98px;position:relative;border-radius:50%;border:1px solid rgba(245,189,27,.5);display:grid;place-items:center}
+.eagle-menu-emblem:before{content:"";position:absolute;inset:8px;border:1px dashed rgba(245,189,27,.25);border-radius:50%;animation:eagleMenuSpin 25s linear infinite}
+.eagle-menu-emblem img{width:70px;height:70px;object-fit:contain}
+.eagle-menu-side h3{font:700 clamp(25px,2.8vw,42px)/1.16 'Libre Baskerville',Georgia,serif;color:#fff;margin:0;letter-spacing:-.04em}
+.eagle-menu-side p{color:rgba(255,255,255,.68);max-width:330px;margin:0}
+.eagle-menu-side-contact{color:white!important;align-self:flex-start;border-bottom:1px solid var(--yellow);padding:10px 0;font-weight:800}
+.eagle-menu-close{position:absolute;z-index:5;top:25px;right:clamp(20px,4.5vw,65px);border:1px solid rgba(255,255,255,.4);border-radius:32px;background:rgba(255,255,255,.07);color:#fff;padding:9px 16px;display:flex;gap:12px;align-items:center;font-size:11px;font-weight:800;letter-spacing:.15em;transition:background .25s,transform .25s}
+.eagle-menu-close:hover{background:rgba(245,189,27,.18);transform:translateY(-2px)}.eagle-menu-close span{font-size:19px;font-weight:400}
+.eagle-menu-foot{margin-top:22px;color:rgba(255,255,255,.47);font-size:10px;font-weight:800;letter-spacing:.17em}
+body.menu-open{overflow:hidden}
+@keyframes eagleMenuAppear{from{opacity:0;clip-path:inset(0 0 100% 0)}to{opacity:1;clip-path:inset(0 0 0 0)}}@keyframes eagleMenuSpin{to{transform:rotate(360deg)}}
+/* Blueprint drawing initial loader */
+.eagle-opening{position:fixed;inset:0;z-index:20000;display:grid;place-items:center;overflow:hidden;isolation:isolate;color:#fff;background:var(--navy);animation:eagleOpeningFailsafe .6s 3.25s forwards}
+.eagle-opening-grid{position:absolute;inset:-40px;opacity:.24;pointer-events:none;background-image:linear-gradient(90deg,rgba(204,220,231,.27) 1px,transparent 1px),linear-gradient(rgba(204,220,231,.27) 1px,transparent 1px);background-size:42px 42px;transform:rotate(-6deg) scale(1.12);animation:eagleBlueprintDrift 3.1s ease-in-out infinite alternate}
+.eagle-opening-content{position:relative;z-index:1;width:min(400px,87vw);text-align:center}
+.eagle-blueprint-figure{position:relative;margin:0 auto 24px;width:132px;height:132px;display:grid;place-items:center;border:1px solid rgba(245,189,27,.3);border-radius:50%}
+.eagle-blueprint-figure:before{content:"";position:absolute;inset:9px;border:1px dashed rgba(245,189,27,.45);border-radius:50%;animation:eagleMenuSpin 13s linear infinite}
+.eagle-blueprint-figure svg{width:92px;height:92px;overflow:visible;fill:none;stroke:var(--yellow);stroke-width:1.6;stroke-linejoin:round;stroke-linecap:round}
+.eagle-blueprint-figure svg path{stroke-dasharray:260;stroke-dashoffset:260;animation:eagleTrace 1.5s .15s cubic-bezier(.12,.7,.3,1) forwards}
+.eagle-blueprint-figure svg path:nth-child(2){animation-delay:.31s}.eagle-blueprint-figure svg path:nth-child(3){animation-delay:.48s}.eagle-blueprint-figure svg path:nth-child(4){animation-delay:.6s}
+.eagle-opening-overline{display:block;margin-bottom:13px;color:var(--yellow);font-size:10px;font-weight:800;letter-spacing:.34em}
+.eagle-opening-title{font:800 clamp(40px,8vw,66px)/1 Georgia,serif!important;letter-spacing:-.06em!important;margin:0!important;color:#fff!important}
+.eagle-opening-title small{display:block;color:#e7e9eb;font:800 11px/1.5 'DM Sans',sans-serif;letter-spacing:.35em;margin:12px 0 18px}
+.eagle-opening-caption{font-size:11px;font-weight:700;letter-spacing:.22em;color:rgba(255,255,255,.6)}
+.eagle-opening-track{height:2px;width:min(280px,78vw);margin:28px auto 0;background:rgba(255,255,255,.17);overflow:hidden}
+.eagle-opening-track span{display:block;width:100%;height:100%;background:var(--yellow);transform:translateX(-100%);animation:eagleTraceLine 1.6s .2s cubic-bezier(.17,.67,.18,1) forwards}
+.eagle-opening.is-done{animation:eagleOpeningExit .65s cubic-bezier(.7,0,.23,1) forwards;pointer-events:none}
+@keyframes eagleBlueprintDrift{to{transform:rotate(-4deg) scale(1.16) translateY(-12px)}}@keyframes eagleTrace{to{stroke-dashoffset:0}}@keyframes eagleTraceLine{to{transform:translateX(0)}}
+@keyframes eagleOpeningExit{to{opacity:0;visibility:hidden;transform:translateY(-5%)}}@keyframes eagleOpeningFailsafe{to{opacity:0;visibility:hidden;pointer-events:none}}
+/* Page curtains: destination pages other than Home only */
+.eagle-curtain{position:fixed;inset:0;z-index:15000;visibility:hidden;pointer-events:none;overflow:hidden}
+.eagle-curtain-panel{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;overflow:hidden;background:var(--navy);transform:translateY(-102%);transition:transform .48s cubic-bezier(.77,0,.18,1)}
+.eagle-curtain-panel:before{content:"";position:absolute;inset:0;opacity:.17;background-image:linear-gradient(90deg,rgba(255,255,255,.3) 1px,transparent 1px),linear-gradient(rgba(255,255,255,.3) 1px,transparent 1px);background-size:52px 52px;transform:rotate(-5deg) scale(1.1)}
+.eagle-curtain-panel:after{content:"";position:absolute;bottom:0;left:0;right:0;height:5px;background:var(--yellow)}
+.eagle-curtain-word{z-index:1;position:relative;color:white;font:700 clamp(30px,5vw,65px) 'Libre Baskerville',Georgia,serif;letter-spacing:-.05em;opacity:0;transform:translateY(16px);transition:opacity .3s,transform .4s}
+.eagle-curtain.is-in,.eagle-curtain.is-out{visibility:visible}
+.eagle-curtain.is-in .eagle-curtain-panel{transform:translateY(0)}.eagle-curtain.is-in .eagle-curtain-word{opacity:1;transform:none;transition-delay:.1s}
+.eagle-curtain.is-out .eagle-curtain-panel{transform:translateY(102%)}.eagle-curtain.is-out .eagle-curtain-word{opacity:0;transform:translateY(-16px)}
+/* Scroll: GPU transforms preserve existing element sizes and positions */
+.eagle-scroll-progress{position:fixed;top:0;left:0;height:3px;width:100%;background:var(--yellow);transform-origin:0 50%;transform:scaleX(0);z-index:8500;pointer-events:none}
+.eagle-kinetic-word{display:inline-block;transform-origin:center bottom;backface-visibility:hidden;will-change:transform,opacity}
+.service-photo,.project-photo{overflow:hidden}.service-photo img,.project-photo img{will-change:transform}
+.eagle-fallback-hide{opacity:0;transform:translateY(25px);transition:transform .8s ease,opacity .8s ease}.eagle-fallback-hide.eagle-fallback-show{opacity:1;transform:none}
+@media(min-width:951px){.site-header .header-inner{gap:16px}.menu-toggle{margin-left:auto}}
+@media(max-width:950px){.menu-toggle{min-width:44px;width:44px;padding:8px}.eagle-toggle-label{display:none}}
+@media(max-width:760px){.eagle-menu.shown{grid-template-columns:1fr;grid-template-rows:auto auto}.eagle-menu-main{padding:87px 24px 28px;justify-content:flex-start}.eagle-menu-list{margin-top:15px}.eagle-menu-name{font-size:clamp(30px,8.8vw,46px)}.eagle-menu-link{padding:4px 0 8px}.eagle-menu-side{padding:28px 24px 48px;border-left:0;border-top:1px solid rgba(255,255,255,.14);gap:12px}.eagle-menu-emblem{width:65px;height:65px}.eagle-menu-emblem img{width:46px;height:46px}.eagle-menu-side h3{font-size:25px}.eagle-menu-close{top:18px;right:18px}}
+@media(max-width:420px){.eagle-menu-main{padding-top:79px}.eagle-menu-link{padding:3px 0 6px}.eagle-menu-name{font-size:28px}.eagle-menu-side p{font-size:12px}}
+@media(prefers-reduced-motion:reduce){.eagle-menu,.eagle-menu-link,.eagle-curtain,.eagle-curtain-panel,.eagle-curtain-word,.eagle-kinetic-word,.eagle-blueprint-figure svg path,.eagle-opening-grid,.eagle-menu-emblem:before{animation:none!important;transition:none!important}.eagle-opening{animation:eagleOpeningFailsafe .01s .25s forwards!important}.eagle-opening.is-done{animation:eagleOpeningExit .01s forwards!important}}

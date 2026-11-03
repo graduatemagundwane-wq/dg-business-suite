@@ -589,19 +589,50 @@ def inspections(u:User=Depends(current_user),db:Session=Depends(get_db)):
         q=q.where(Inspection.job_id.in_(assigned))
     return [row(x,'id','job_id','inspector_id','checklist','notes','created_at') for x in db.scalars(q.order_by(Inspection.id.desc())).all()]
 
-# Employees clock-in/out uses server time and records a tamper-evident activity trail.
+# Staff attendance approvals, unpaid breaks and payroll-safe summaries.
+# Clock-in always reflects the actual server time, never the approval time.
+from zoneinfo import ZoneInfo
+from datetime import date
+from typing import Literal
+import os
+
+HARARE = ZoneInfo('Africa/Harare')
+
+class AttendanceDecision(BaseModel):
+    decision: Literal['approve','reject']
+    note: str = Field(default='',max_length=500)
+
+class ClockOutInput(BaseModel):
+    unpaid_break_minutes: int = Field(default=0,ge=0,le=1440)
+
+def as_utc(value):
+    return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
+
+def attendance_record(a):
+    result=row(a,'id','user_id','clock_in','clock_out','approval_status',
+               'decision_by','decision_at','decision_note','unpaid_break_minutes')
+    start=as_utc(a.clock_in)
+    end=as_utc(a.clock_out) if a.clock_out else None
+    raw=max(0,int((end-start).total_seconds()//60)) if end else None
+    net=max(0,raw-a.unpaid_break_minutes) if raw is not None else None
+    result['worked_minutes']=net
+    result['payable_minutes']=net if a.approval_status=='approved' and net is not None else 0
+    result['overnight']=bool(end and start.astimezone(HARARE).date()!=end.astimezone(HARARE).date())
+    result['missing_checkout']=bool(not end and (now()-start)>timedelta(hours=18))
+    return result
+
 @router.get('/attendance/me')
 def my_attendance(u:User=Depends(current_user),db:Session=Depends(get_db)):
     if not is_staff(u):raise HTTPException(403,'Employee account required')
     q=select(Attendance).where(Attendance.organization_id==u.organization_id,
-                               Attendance.user_id==u.id).order_by(Attendance.id.desc()).limit(60)
-    return [row(x,'id','user_id','clock_in','clock_out') for x in db.scalars(q).all()]
+                               Attendance.user_id==u.id).order_by(Attendance.id.desc()).limit(120)
+    return [attendance_record(x) for x in db.scalars(q).all()]
 
 @router.get('/attendance')
 def team_attendance(u:User=Depends(current_user),db:Session=Depends(get_db)):
     permit(u,'manager')
-    q=select(Attendance).where(Attendance.organization_id==u.organization_id).order_by(Attendance.id.desc()).limit(300)
-    return [row(x,'id','user_id','clock_in','clock_out') for x in db.scalars(q).all()]
+    q=select(Attendance).where(Attendance.organization_id==u.organization_id).order_by(Attendance.id.desc()).limit(500)
+    return [attendance_record(x) for x in db.scalars(q).all()]
 
 @router.post('/attendance/clock-in')
 def clock_in(u:User=Depends(current_user),db:Session=Depends(get_db)):
@@ -609,15 +640,77 @@ def clock_in(u:User=Depends(current_user),db:Session=Depends(get_db)):
     open_shift=db.scalar(select(Attendance).where(Attendance.organization_id==u.organization_id,
                  Attendance.user_id==u.id,Attendance.clock_out.is_(None)).order_by(Attendance.id.desc()).limit(1).with_for_update())
     if open_shift:raise HTTPException(409,'You must clock out of the previous shift first')
-    a=Attendance(organization_id=u.organization_id,user_id=u.id)
-    db.add(a);db.flush();audit(db,u,'clock_in','attendance',a.id);commit(db)
-    return row(a,'id','user_id','clock_in','clock_out')
+    a=Attendance(organization_id=u.organization_id,user_id=u.id,clock_in=now(),approval_status='pending')
+    db.add(a);db.flush();audit(db,u,'clock_in','attendance',a.id)
+    people=db.scalars(select(User).where(User.organization_id==u.organization_id,User.active.is_(True))).all()
+    for person in people:
+        if person.id!=u.id and set(person.roles or []).intersection({'owner','manager'}):
+            db.add(Notification(organization_id=u.organization_id,recipient_id=person.id,
+                                message=f'{u.name} checked in. Attendance #{a.id} is pending approval.'))
+    commit(db)
+    return attendance_record(a)
 
 @router.post('/attendance/clock-out')
-def clock_out(u:User=Depends(current_user),db:Session=Depends(get_db)):
+def clock_out(payload:ClockOutInput|None=None,u:User=Depends(current_user),db:Session=Depends(get_db)):
     if not is_staff(u):raise HTTPException(403,'Employee account required')
     a=db.scalar(select(Attendance).where(Attendance.organization_id==u.organization_id,
                  Attendance.user_id==u.id,Attendance.clock_out.is_(None)).order_by(Attendance.id.desc()).limit(1).with_for_update())
     if not a:raise HTTPException(409,'No active clock-in to close')
-    a.clock_out=now();audit(db,u,'clock_out','attendance',a.id);commit(db)
-    return row(a,'id','user_id','clock_in','clock_out')
+    moment=now()
+    elapsed=max(0,int((moment-as_utc(a.clock_in)).total_seconds()//60))
+    breaks=payload.unpaid_break_minutes if payload else 0
+    if breaks>elapsed:raise HTTPException(422,'Unpaid break cannot exceed the shift duration')
+    a.clock_out=moment;a.unpaid_break_minutes=breaks
+    audit(db,u,'clock_out','attendance',a.id,unpaid_break_minutes=breaks);commit(db)
+    return attendance_record(a)
+
+@router.post('/attendance/{attendance_id}/decision')
+def attendance_decision(attendance_id:int,payload:AttendanceDecision,u:User=Depends(current_user),db:Session=Depends(get_db)):
+    permit(u,'manager')
+    a=db.scalar(select(Attendance).where(Attendance.id==attendance_id,
+                      Attendance.organization_id==u.organization_id).with_for_update())
+    if not a:raise HTTPException(404,'Attendance record not found')
+    if a.approval_status!='pending':raise HTTPException(409,'Attendance has already been reviewed')
+    if a.user_id==u.id and 'owner' not in (u.roles or []):raise HTTPException(403,'Managers cannot approve their own attendance')
+    if payload.decision=='reject' and not payload.note.strip():
+        raise HTTPException(422,'A rejection reason is required')
+    a.approval_status='approved' if payload.decision=='approve' else 'rejected'
+    a.decision_by=u.id;a.decision_at=now();a.decision_note=payload.note.strip()
+    audit(db,u,'attendance_'+a.approval_status,'attendance',a.id,worker_id=a.user_id,note=a.decision_note)
+    db.add(Notification(organization_id=u.organization_id,recipient_id=a.user_id,
+                        message=f'Your attendance #{a.id} was {a.approval_status} by {u.name}.'))
+    commit(db)
+    return attendance_record(a)
+
+@router.get('/attendance/summary')
+def attendance_summary(start_date:str|None=None,end_date:str|None=None,
+                       u:User=Depends(current_user),db:Session=Depends(get_db)):
+    permit(u,'manager')
+    today=now().astimezone(HARARE).date()
+    try:
+        first=date.fromisoformat(start_date) if start_date else today.replace(day=1)
+        last=date.fromisoformat(end_date) if end_date else today
+    except ValueError:raise HTTPException(422,'Use YYYY-MM-DD for start_date and end_date')
+    if last<first or (last-first).days>92:raise HTTPException(422,'Date range must be 1 to 93 days')
+    items=db.scalars(select(Attendance).where(Attendance.organization_id==u.organization_id)
+                     .order_by(Attendance.id.desc()).limit(10000)).all()
+    filtered=[a for a in items if first<=as_utc(a.clock_in).astimezone(HARARE).date()<=last]
+    daily={};staff={};pending=0;rejected=0
+    for a in filtered:
+        if a.approval_status=='pending':pending+=1
+        if a.approval_status=='rejected':rejected+=1
+        if a.approval_status!='approved' or not a.clock_out:continue
+        minutes=attendance_record(a)['payable_minutes']
+        key=(a.user_id,as_utc(a.clock_in).astimezone(HARARE).date().isoformat())
+        daily[key]=daily.get(key,0)+minutes
+        staff[a.user_id]=staff.get(a.user_id,0)+minutes
+    target_env=os.getenv('PASH_STANDARD_DAILY_MINUTES','').strip()
+    daily_target=int(target_env) if target_env.isdigit() and 1<=int(target_env)<=1440 else None
+    overtime=sum(max(0,minutes-daily_target) for minutes in daily.values()) if daily_target is not None else None
+    return {'start_date':first.isoformat(),'end_date':last.isoformat(),
+            'approved_paid_minutes':sum(staff.values()),
+            'overtime_minutes':overtime,'standard_daily_minutes':daily_target,
+            'pending_count':pending,'rejected_count':rejected,
+            'by_staff':[{'user_id':uid,'payable_minutes':minutes} for uid,minutes in sorted(staff.items())],
+            'by_day':[{'user_id':uid,'date':day,'payable_minutes':minutes}
+                      for (uid,day),minutes in sorted(daily.items())]}

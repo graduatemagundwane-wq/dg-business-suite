@@ -383,6 +383,11 @@ class Attendance(Base):
     user_id = Column(Integer, ForeignKey('users.id'), nullable=False, index=True)
     clock_in = Column(DateTime(timezone=True), nullable=False, default=now)
     clock_out = Column(DateTime(timezone=True), nullable=True)
+    approval_status = Column(String(16), nullable=False, default='pending')
+    decision_by = Column(Integer, ForeignKey('users.id'), nullable=True)
+    decision_at = Column(DateTime(timezone=True), nullable=True)
+    decision_note = Column(String(500), nullable=False, default='')
+    unpaid_break_minutes = Column(Integer, nullable=False, default=0)
 
 
 class JobPhoto(Base):

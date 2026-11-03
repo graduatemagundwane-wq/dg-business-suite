@@ -1,0 +1,30 @@
+name: Inspect Eagle Construction image paths
+on:
+  push:
+    branches: [deploy-eagle-construction-site-20261103]
+    paths: ['.github/workflows/eagle-inspect.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: List all files and image references in original website package
+        run: |
+          python3 - <<'PY'
+          import zipfile,re
+          z=zipfile.ZipFile('eagle-site.zip')
+          print('PACKAGE_CONTENTS_BEGIN')
+          for i in z.infolist():
+            print(i.filename, '|', i.file_size)
+          print('PACKAGE_CONTENTS_END')
+          for p in z.namelist():
+            if p.endswith(('.html','.css','.js','.mjs','.json')):
+              try: txt=z.read(p).decode('utf-8')
+              except: continue
+              print('SOURCE_FILE:',p)
+              for m in re.finditer(r'.{0,130}(?:assets/|images/|\.webp|\.jpg|\.png|\.jpeg|\.avif).{0,150}',txt,re.I):
+                print('REF:',m.group(0)[:240])
+          PY

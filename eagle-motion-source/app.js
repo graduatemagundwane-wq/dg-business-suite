@@ -97,8 +97,8 @@ function quotePage(){return `${hero({name:'contact',tagline:'REQUEST A QUOTE',he
 function modalHtml(){return `<div class="modal-backdrop" id="visit-modal" role="presentation" hidden><div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="visit-title"><button class="modal-close" id="modal-close" aria-label="Close">${ico('x',22)}</button><span class="eyebrow">PROJECT CONSULTATION</span><h2 id="visit-title">Request a Site Visit</h2><p>Send your details and we’ll contact you to agree a suitable time and location.</p><form id="visit-form"><label>Your Name <span>*</span><input name="name" type="text" maxlength="120" required placeholder="Full name"></label><label>Phone Number <span>*</span><input name="phone" type="tel" minlength="8" maxlength="25" required placeholder="Your phone number"></label><label>Project Location <span>*</span><input name="location" type="text" maxlength="180" required placeholder="Where is the project located?"></label><label>Preferred Date <span>*</span><input name="preferred_date" type="date" required></label><label>Project Details <span>*</span><textarea name="details" minlength="10" maxlength="3000" required placeholder="What would you like our team to assess?"></textarea></label><label class="spam-trap" aria-hidden="true">Website<input type="text" name="company_website" tabindex="-1"></label><button type="submit" class="btn btn-primary submit-btn">${ico('calendar',18)} Request Site Visit</button><div id="visit-message" role="status" aria-live="polite"></div></form></div></div>`;}
 function adminPage(){return `<section class="admin-page"><div class="container"><span class="eyebrow">SECURE ADMINISTRATION</span><h1>Eagle Construction Enquiries</h1><p>Review quotation and site-visit requests submitted through this website.</p><div id="admin-auth"><form id="admin-login" class="admin-login"><label>Admin Password<input type="password" name="password" required autocomplete="current-password"></label><button type="submit" class="btn btn-primary">${ico('lock',18)} Sign In</button><div id="admin-error" role="status"></div></form></div><div id="admin-dash" hidden><div class="admin-actions"><button id="refresh-leads" class="btn btn-outline">Refresh Enquiries</button><button id="admin-logout" class="btn btn-outline">Sign Out</button></div><div class="admin-table-wrap"><table><thead><tr><th>Received</th><th>Type</th><th>Name</th><th>Phone</th><th>Service / Date</th><th>Location</th><th>Details & Files</th></tr></thead><tbody id="leads-table"></tbody></table></div></div></div></section>`;}
 const routes={'/':home,'/about':about,'/services':servicesPage,'/projects':projectsPage,'/contact':contact,'/request-a-quote':quotePage,'/admin':adminPage};
-function render(){page = window.location.pathname.replace(/\/$/,'')||'/';if(!routes[page])page='/';document.title=({ '/':'Eagle Construction Company | Quality Builds Last','/about':'About Eagle Construction Company','/services':'Construction Services | Eagle Construction Company','/projects':'Project Areas | Eagle Construction Company','/contact':'Contact | Eagle Construction Company','/request-a-quote':'Request a Quote | Eagle Construction Company','/admin':'Admin Enquiries | Eagle Construction Company'})[page];app.innerHTML=header()+`<main id="main">${routes[page]()}</main>`+footer()+modalHtml();document.body.classList.remove('menu-open');bindUI();const serviceFromUrl=new URLSearchParams(location.search).get('service');if(serviceFromUrl){const select=document.querySelector('#quote-form select[name="service"]');if(select)select.value=serviceFromUrl;}if(location.hash){requestAnimationFrame(()=>document.getElementById(location.hash.slice(1))?.scrollIntoView({behavior:'instant',block:'center'}));}else window.scrollTo({top:0,behavior:'instant'});}
-function navigate(path){window.history.pushState({},'',path);render();}
+function render(){if(eagleAnimationContext){eagleAnimationContext.revert();eagleAnimationContext=null;}page = window.location.pathname.replace(/\/$/,'')||'/';if(!routes[page])page='/';document.title=({ '/':'Eagle Construction Company | Quality Builds Last','/about':'About Eagle Construction Company','/services':'Construction Services | Eagle Construction Company','/projects':'Project Areas | Eagle Construction Company','/contact':'Contact | Eagle Construction Company','/request-a-quote':'Request a Quote | Eagle Construction Company','/admin':'Admin Enquiries | Eagle Construction Company'})[page];app.innerHTML=header()+`<main id="main">${routes[page]()}</main>`+footer()+modalHtml();document.body.classList.remove('menu-open');menuOpen=false;eagleInitMenu();bindUI();const serviceFromUrl=new URLSearchParams(location.search).get('service');if(serviceFromUrl){const select=document.querySelector('#quote-form select[name="service"]');if(select)select.value=serviceFromUrl;}if(location.hash){requestAnimationFrame(()=>document.getElementById(location.hash.slice(1))?.scrollIntoView({behavior:'instant',block:'center'}));}else window.scrollTo({top:0,behavior:'instant'});eagleAfterRender();}
+function navigate(path){if(eagleShouldTransition(path)){eagleTransition(()=>{window.history.pushState({},'',path);render();},path);return;}window.history.pushState({},'',path);render();}
 function bindUI(){document.getElementById('menu-toggle')?.addEventListener('click',()=>{const nav=document.getElementById('mobile-nav');menuOpen=!menuOpen;nav.classList.toggle('shown',menuOpen);document.getElementById('menu-toggle').setAttribute('aria-expanded',String(menuOpen));document.body.classList.toggle('menu-open',menuOpen)});document.querySelectorAll('a[href^="/"]').forEach(a=>a.addEventListener('click',e=>{const href=a.getAttribute('href');if(!href.startsWith('//')&&e.button===0&&!e.metaKey&&!e.ctrlKey&&!e.shiftKey){e.preventDefault();menuOpen=false;navigate(href);}}));document.querySelectorAll('[data-modal="visit"]').forEach(btn=>btn.addEventListener('click',openModal));document.getElementById('modal-close').addEventListener('click',closeModal);document.getElementById('visit-modal').addEventListener('click',e=>{if(e.target.id==='visit-modal')closeModal()});document.getElementById('quote-form')?.addEventListener('submit',submitQuote);document.getElementById('visit-form')?.addEventListener('submit',submitVisit);document.getElementById('plans')?.addEventListener('change',updateFileLabel);if(page==='/admin')setupAdmin();const date=document.querySelector('[name="preferred_date"]');if(date)date.min=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);}
 function openModal(){document.getElementById('visit-modal').hidden=false;document.body.classList.add('modal-open');document.querySelector('.modal-close').focus();}
 function closeModal(){document.getElementById('visit-modal').hidden=true;document.body.classList.remove('modal-open');}
@@ -108,6 +108,126 @@ async function submitVisit(e){e.preventDefault();const form=e.target,button=form
 function sanitize(s){return String(s??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#39;');}
 async function setupAdmin(){document.getElementById('admin-login').addEventListener('submit',async e=>{e.preventDefault();const password=new FormData(e.target).get('password');const res=await fetch('/api/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password})});if(res.ok){e.target.reset();loadLeads();}else{const d=await res.json();document.getElementById('admin-error').textContent=d.error||'Unable to sign in';}});document.getElementById('refresh-leads').addEventListener('click',loadLeads);document.getElementById('admin-logout').addEventListener('click',async()=>{await fetch('/api/admin/logout',{method:'POST'});document.getElementById('admin-auth').hidden=false;document.getElementById('admin-dash').hidden=true;});loadLeads();}
 async function loadLeads(){const res=await fetch('/api/admin/leads');if(!res.ok){document.getElementById('admin-auth').hidden=false;document.getElementById('admin-dash').hidden=true;return;}const leads=await res.json();document.getElementById('admin-auth').hidden=true;document.getElementById('admin-dash').hidden=false;document.getElementById('leads-table').innerHTML=leads.length?leads.map(l=>`<tr><td>${sanitize(new Date(l.createdAt).toLocaleString())}<br><small>${sanitize(l.reference)}</small></td><td>${sanitize(l.type)}</td><td>${sanitize(l.name)}</td><td><a href="tel:${sanitize(l.phone)}">${sanitize(l.phone)}</a><br><small>${sanitize(l.email||'')}</small></td><td>${sanitize(l.service||l.preferred_date||'—')}</td><td>${sanitize(l.location)}</td><td>${sanitize(l.details)}${l.files?.length?`<div class="download-links">${l.files.map((f,i)=>`<a href="/api/admin/download/${encodeURIComponent(l.id)}/${i}">${ico('file',14)} ${sanitize(f.originalName)}</a>`).join('')}</div>`:''}</td></tr>`).join(''):'<tr><td colspan="7">No enquiries submitted yet.</td></tr>';}
-window.addEventListener('popstate',render);
-window.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal();});
+
+/* Eagle Construction: motion layer — menu, blueprint loader, scroll and subpage transitions only */
+let eagleAnimationContext=null,eagleMotionLibrariesRequested=false,eagleMotionReady=false,eagleInitialLoaderStarted=false,eagleTransitionBusy=false,eagleSmoothScroll=null,eagleProgressInstalled=false;
+const eagleReduceMotion=()=>window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+function eagleInitMenu(){
+ const nav=document.getElementById('mobile-nav'),toggle=document.getElementById('menu-toggle');if(!nav||!toggle)return;
+ nav.className='eagle-menu';
+ const sub={'/':'THE WELCOME','/about':'OUR STORY','/services':'WHAT WE DO','/projects':'PROJECT AREAS','/request-a-quote':'START YOUR BUILD','/contact':'GET IN TOUCH'};
+ nav.innerHTML='<button type="button" id="eagle-menu-close" class="eagle-menu-close" aria-label="Close navigation"><span aria-hidden="true">×</span> CLOSE</button>'+
+ '<div class="eagle-menu-main"><span class="eagle-menu-tag">EAGLE / SITE INDEX</span><div class="eagle-menu-list">'+
+ navItems.map(([path,label],i)=>'<a class="eagle-menu-link'+(page===path?' is-current':'')+'" href="'+path+'"'+(page===path?' aria-current="page"':'')+'><span class="eagle-menu-no">0'+(i+1)+'</span><span class="eagle-menu-name">'+label+'</span></a>').join('')+
+ '</div><span class="eagle-menu-foot">BUILD · RENOVATE · IMPROVE</span></div>'+
+ '<div class="eagle-menu-side"><div class="eagle-menu-emblem"><img src="/assets/eagle-head.png" alt="" /></div><span class="eagle-menu-side-tag" id="eagle-menu-preview">'+(sub[page]||'EXPLORE OUR WORK')+'</span><h3>Building spaces.<br>Creating futures.</h3><p>Expertise, craftsmanship and clear communication — every step of the way.</p><a class="eagle-menu-side-contact" href="tel:+'+PHONE_DIGITS+'">Talk to our team ↗</a></div>';
+ toggle.innerHTML='<span class="eagle-toggle-label">Explore</span><span class="eagle-toggle-lines" aria-hidden="true"><i></i></span>';
+ toggle.setAttribute('aria-label','Open site navigation');toggle.setAttribute('aria-controls','mobile-nav');
+ nav.querySelector('#eagle-menu-close').addEventListener('click',e=>{e.preventDefault();eagleCloseMenu();});
+ nav.addEventListener('pointerover',e=>{const link=e.target.closest('.eagle-menu-link'),preview=document.getElementById('eagle-menu-preview');if(link&&preview)preview.textContent=sub[link.getAttribute('href')]||'EXPLORE OUR WORK';});
+ toggle.addEventListener('click',()=>window.setTimeout(()=>{if(menuOpen)nav.querySelector('.eagle-menu-link')?.focus({preventScroll:true});},0));
+}
+function eagleCloseMenu(){
+ const nav=document.getElementById('mobile-nav'),toggle=document.getElementById('menu-toggle');
+ menuOpen=false;nav?.classList.remove('shown');toggle?.setAttribute('aria-expanded','false');document.body.classList.remove('menu-open');toggle?.focus({preventScroll:true});
+}
+function eagleShouldTransition(destination){
+ if(eagleReduceMotion()||eagleTransitionBusy)return false;
+ const next=new URL(destination,window.location.href).pathname.replace(/\/$/,'')||'/';
+ return next!=='/'&&next!==page;
+}
+function eagleTransition(action,destination){
+ const curtain=document.getElementById('eagle-curtain');if(!curtain||eagleReduceMotion()){action();return;}
+ eagleTransitionBusy=true;
+ const names={'/about':'ABOUT US','/services':'OUR SERVICES','/projects':'OUR PROJECTS','/request-a-quote':'REQUEST A QUOTE','/contact':'CONTACT','/admin':'ADMINISTRATION'};
+ const path=new URL(destination||window.location.href,window.location.href).pathname.replace(/\/$/,'')||'/';
+ const label=curtain.querySelector('.eagle-curtain-word');if(label)label.textContent=names[path]||'EAGLE CONSTRUCTION';
+ curtain.className='eagle-curtain';void curtain.offsetHeight;curtain.classList.add('is-in');
+ window.setTimeout(()=>{try{action();}finally{
+   curtain.classList.remove('is-in');curtain.classList.add('is-out');
+   window.setTimeout(()=>{curtain.className='eagle-curtain';eagleTransitionBusy=false;},620);
+ }},510);
+}
+function eagleProgressUpdate(){
+ const bar=document.getElementById('eagle-progress');if(!bar)return;
+ const limit=Math.max(1,document.documentElement.scrollHeight-window.innerHeight);
+ bar.style.transform='scaleX('+Math.max(0,Math.min(1,window.scrollY/limit))+')';
+}
+function eagleInitProgress(){
+ if(eagleProgressInstalled)return;eagleProgressInstalled=true;
+ window.addEventListener('scroll',eagleProgressUpdate,{passive:true});
+ window.addEventListener('resize',eagleProgressUpdate,{passive:true});
+}
+function eagleLoadScript(src){
+ return new Promise((resolve,reject)=>{const s=document.createElement('script');s.src=src;s.async=true;s.onload=resolve;s.onerror=()=>reject(new Error('Animation CDN unavailable'));document.head.appendChild(s);});
+}
+function eagleLoadMotionLibraries(){
+ if(eagleMotionLibrariesRequested||eagleReduceMotion())return;eagleMotionLibrariesRequested=true;
+ eagleLoadScript('https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js')
+ .then(()=>eagleLoadScript('https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/ScrollTrigger.min.js'))
+ .then(()=>{if(!window.gsap||!window.ScrollTrigger)return;window.gsap.registerPlugin(window.ScrollTrigger);eagleMotionReady=true;eagleAnimatePage();})
+ .catch(()=>eagleFallbackReveal());
+ if(window.matchMedia('(min-width: 951px) and (hover: hover) and (pointer: fine)').matches)
+   eagleLoadScript('https://cdn.jsdelivr.net/npm/lenis@1.3.27/dist/lenis.min.js').then(()=>{
+     if(!window.Lenis||eagleSmoothScroll||eagleReduceMotion())return;
+     eagleSmoothScroll=new window.Lenis({autoRaf:true,duration:1.12,smoothWheel:true,wheelMultiplier:.88});
+     if(window.ScrollTrigger)eagleSmoothScroll.on('scroll',()=>window.ScrollTrigger.update());
+   }).catch(()=>{});
+}
+function eagleSplitWords(element){
+ if(!element||element.dataset.eagleSplit==='1')return;element.dataset.eagleSplit='1';
+ const walker=document.createTreeWalker(element,NodeFilter.SHOW_TEXT),nodes=[];while(walker.nextNode())nodes.push(walker.currentNode);
+ nodes.forEach(node=>{if(!node.nodeValue.trim())return;const frag=document.createDocumentFragment();
+   node.nodeValue.split(/(\s+)/).forEach(token=>{if(!token)return;
+     if(/^\s+$/.test(token)){frag.appendChild(document.createTextNode(token));return;}
+     const el=document.createElement('span');el.className='eagle-kinetic-word';el.textContent=token;frag.appendChild(el);
+   });node.replaceWith(frag);
+ });
+}
+function eagleFallbackReveal(){
+ if(eagleMotionReady||eagleReduceMotion()||!('IntersectionObserver' in window))return;
+ const nodes=document.querySelectorAll('.service-card,.project-photo,.special-card,.process-step,.quote-banner,.visit-banner');
+ const io=new IntersectionObserver(entries=>entries.forEach(e=>{if(e.isIntersecting){e.target.classList.add('eagle-fallback-show');io.unobserve(e.target);}}),{threshold:.06,rootMargin:'0px 0px -3% 0px'});
+ nodes.forEach(n=>{n.classList.add('eagle-fallback-hide');io.observe(n);});
+}
+function eagleAnimatePage(){
+ if(!eagleMotionReady||eagleReduceMotion()||!document.querySelector('#main'))return;
+ if(eagleAnimationContext){eagleAnimationContext.revert();eagleAnimationContext=null;}
+ const gsap=window.gsap,Trigger=window.ScrollTrigger;
+ eagleAnimationContext=gsap.context(()=>{
+   document.querySelectorAll('.hero h1,.section-heading h2,.intro-grid h2,.section-split h2,.people-copy h2,.benefits-grid h2,.heading-row h2').forEach(eagleSplitWords);
+   document.querySelectorAll('.hero h1').forEach(h=>{
+     gsap.from(h.querySelectorAll('.eagle-kinetic-word'),{yPercent:95,rotationX:50,opacity:0,stagger:.064,duration:.96,ease:'back.out(1.65)',clearProps:'all',delay:.13});
+   });
+   document.querySelectorAll('.section-heading h2,.intro-grid h2,.section-split h2,.people-copy h2,.benefits-grid h2,.heading-row h2').forEach((h,i)=>{
+     const words=h.querySelectorAll('.eagle-kinetic-word');if(!words.length)return;
+     gsap.from(words,{yPercent:104,rotationX:45,opacity:0,stagger:.04,duration:.78,ease:'back.out(1.5)',clearProps:'all',scrollTrigger:{trigger:h,start:'top 88%',once:true,id:'eagle-h-'+i}});
+   });
+   ['.service-cards','.project-gallery','.project-page-grid','.special-grid','.process-steps','.values-grid'].forEach((sel,g)=>{
+     document.querySelectorAll(sel).forEach((box,i)=>{const children=[...box.children].filter(el=>!el.classList.contains('step-arrow'));if(!children.length)return;
+       gsap.from(children,{y:52,opacity:.05,rotationX:8,stagger:.105,duration:.91,ease:'power3.out',clearProps:'all',scrollTrigger:{trigger:box,start:'top 89%',once:true,id:'eagle-group-'+g+'-'+i}});
+     });
+   });
+   document.querySelectorAll('.quote-banner,.visit-banner,.people-section,.contact-information,.benefits').forEach((el,i)=>{
+     gsap.from(el,{y:33,opacity:.18,duration:1.1,ease:'power2.out',clearProps:'all',scrollTrigger:{trigger:el,start:'top 90%',once:true,id:'eagle-section-'+i}});
+   });
+   document.querySelectorAll('.hero-image').forEach(el=>gsap.fromTo(el,{yPercent:-2},{yPercent:7,ease:'none',scrollTrigger:{trigger:el.closest('.hero'),start:'top top',end:'bottom top',scrub:.9,id:'eagle-hero-parallax'}}));
+   document.querySelectorAll('.service-photo img,.project-photo img').forEach((el,i)=>gsap.fromTo(el,{scale:1.05,yPercent:-2},{scale:1.08,yPercent:2,ease:'none',scrollTrigger:{trigger:el.closest('.service-photo,.project-photo'),start:'top bottom',end:'bottom top',scrub:1.1,id:'eagle-photo-'+i}}));
+   document.querySelectorAll('.eyebrow').forEach((el,i)=>gsap.from(el,{x:-12,opacity:.25,duration:.68,ease:'power2.out',clearProps:'all',scrollTrigger:{trigger:el,start:'top 94%',once:true,id:'eagle-kicker-'+i}}));
+ },document.querySelector('#app'));
+ window.requestAnimationFrame(()=>{Trigger.refresh();eagleProgressUpdate();});
+}
+function eagleAfterRender(){
+ eagleInitProgress();eagleProgressUpdate();
+ if(!eagleInitialLoaderStarted){
+   eagleInitialLoaderStarted=true;const loader=document.getElementById('eagle-opening');
+   if(loader){window.setTimeout(()=>loader.classList.add('is-done'),1350);window.setTimeout(()=>loader.remove(),2300);}
+ }
+ if(eagleSmoothScroll){eagleSmoothScroll.resize();if(!window.location.hash)eagleSmoothScroll.scrollTo(0,{immediate:true});}
+ if(eagleMotionReady)eagleAnimatePage();else eagleLoadMotionLibraries();
+}
+
+window.addEventListener('popstate',()=>{if(eagleShouldTransition(location.pathname))eagleTransition(render,location.pathname);else render();});
+window.addEventListener('keydown',e=>{if(e.key==='Escape'){if(menuOpen)eagleCloseMenu();closeModal();}});
 render();

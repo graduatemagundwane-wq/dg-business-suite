@@ -5,6 +5,7 @@ import * as LocalAuthentication from 'expo-local-authentication';
 import {CameraView, useCameraPermissions} from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import {cleanScan} from './scan-utils';
+import {resolveBack} from './navigation';
 
 type Json = Record<string,any>;
 const API=(process.env.EXPO_PUBLIC_API_URL || '').replace(/\/$/,'');
@@ -88,7 +89,7 @@ const CREATE:Record<string,CreateSpec>={
 };
 const NEXT:Record<string,string[]>={received:['diagnosis'],diagnosis:['awaiting_approval','awaiting_parts'],awaiting_approval:['awaiting_parts','repairing'],awaiting_parts:['repairing'],repairing:['quality_check'],quality_check:['repairing','ready'],ready:['delivered']};
 function Button({label,onPress,secondary=false,disabled=false}:{label:string,onPress:()=>void,secondary?:boolean,disabled?:boolean}){
-  return <Pressable disabled={disabled} onPress={onPress} style={[styles.button,secondary?styles.secondary:null,disabled?{opacity:.5}:null]}><Text style={[styles.buttonText,secondary?{color:C.dark}:null]}>{label}</Text></Pressable>;
+  return <Pressable accessibilityRole="button" accessibilityLabel={label} disabled={disabled} onPress={onPress} style={[styles.button,secondary?styles.secondary:null,disabled?{opacity:.5}:null]}><Text style={[styles.buttonText,secondary?{color:C.dark}:null]}>{label}</Text></Pressable>;
 }
 function Field({label,value,set,secure=false,number=false,multiline=false}:{label:string,value:string,set:(v:string)=>void,secure?:boolean,number?:boolean,multiline?:boolean}){
   return <View style={styles.field}><Text style={styles.label}>{label}</Text><TextInput autoCapitalize="none" autoCorrect={false} secureTextEntry={secure} multiline={multiline} textAlignVertical="top" keyboardType={number?'numeric':'default'} value={value} onChangeText={set} style={[styles.input,multiline?{height:115,paddingVertical:13}:null]} placeholderTextColor="#9CA9B0" /></View>;
@@ -126,16 +127,17 @@ function OperationsApp(){
     if(!showMenu){rememberCurrent();setShowMenu(true);setCompose(false);setAction(null);}
   }
   function navigateBack(){
-    if(scanField){setScanField(null);return;}
-    if(action){setAction(null);setActionForm({});return;}
-    if(compose){setCompose(false);return;}
-    const previous=routeTrail.current.pop();
-    if(previous){
-      setTab(previous.tab);setShowMenu(previous.menu);
+    const plan=resolveBack({tab,menu:showMenu,scanner:!!scanField,action:!!action,compose},routeTrail.current);
+    if(plan.kind==='scanner'){setScanField(null);return;}
+    if(plan.kind==='action'){setAction(null);setActionForm({});return;}
+    if(plan.kind==='compose'){setCompose(false);return;}
+    if(plan.kind==='route'&&plan.route){
+      routeTrail.current.pop();
+      setTab(plan.route.tab);setShowMenu(plan.route.menu);
       setAction(null);setCompose(false);return;
     }
-    if(showMenu||tab!=='dashboard'){setTab('dashboard');setShowMenu(false);return;}
-    // Consume hardware back on the root screen instead of minimizing or exiting.
+    if(plan.kind==='home'){setTab('dashboard');setShowMenu(false);}
+    // plan.kind==='root': hardware back consumed, app remains open.
   }
   useEffect(()=>{
     const sub=BackHandler.addEventListener('hardwareBackPress',()=>{
@@ -437,7 +439,7 @@ function OperationsApp(){
         </View>
       </View>
     </View>
-    {showMenu?<ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.page}>
+    {showMenu?<ScrollView style={{flex:1}} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.page}>
         <Text style={styles.heading}>Explore your workspaces</Text>
         <Text style={styles.explain}>Every module you are authorized to use, grouped for faster access.</Text>
         <Field label="Search modules" value={menuSearch} set={setMenuSearch}/>
@@ -457,7 +459,7 @@ function OperationsApp(){
         })}
         <Text style={styles.powered}>POWERED BY DOUBLE GEE TECH</Text>
       </ScrollView>:
-    tab==='account'?<ScrollView contentContainerStyle={styles.page}><Text style={styles.heading}>Account & security</Text>
+    tab==='account'?<ScrollView style={{flex:1}} contentContainerStyle={styles.page}><Text style={styles.heading}>Account & security</Text>
         <Text style={styles.explain}>{profile.name} • {roles.join(' + ')}</Text>
         <View style={styles.card}><Text style={styles.cardTitle}>Change account password</Text><Text style={styles.explain}>For your security, changing your password signs out all devices using this account.</Text>
           <Field label="Current password" secure value={oldPassword} set={setOldPassword}/>
@@ -465,7 +467,7 @@ function OperationsApp(){
           <Button label={busy?'Saving…':'Change password'} disabled={busy||!oldPassword||newPassword.length<12} onPress={passwordChange}/>
         </View><Button secondary label="Sign out of all devices" onPress={logout}/>
       </ScrollView>:
-    tab==='dashboard'?<ScrollView refreshControl={<RefreshControl refreshing={refreshing} onRefresh={()=>load(tab)}/>} contentContainerStyle={styles.page}>
+    tab==='dashboard'?<ScrollView style={{flex:1}} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={()=>load(tab)}/>} contentContainerStyle={styles.page}>
       <View style={styles.dashboardIntro}>
         <View style={{flex:1}}>
           <Text style={styles.dashboardEyebrow}>PASH AUTO  /  {roleLabel.toUpperCase()} COMMAND CENTRE</Text>
@@ -504,7 +506,7 @@ function OperationsApp(){
         <Pressable onPress={()=>navigateTo('account')} accessibilityRole="button"><Text style={styles.linkText}>Account & security  ›</Text></Pressable>
       </View>
     </ScrollView>:
-    <FlatList contentContainerStyle={styles.page} data={rows} keyExtractor={(item,index)=>String(item.id||index)} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={()=>load(tab)}/>}
+    <FlatList style={{flex:1}} contentContainerStyle={styles.page} data={rows} keyExtractor={(item,index)=>String(item.id||index)} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={()=>load(tab)}/>}
       ListHeaderComponent={<>
         <Text style={styles.heading}>{LABELS[tab]}</Text><Text style={styles.explain}>{rows.length} authorized record(s) • Pull down to refresh.</Text>
         {error?<View style={styles.error}><Text style={styles.errorText}>{error}</Text><Button secondary label="Try again" onPress={()=>load(tab)}/></View>:null}

@@ -1,5 +1,5 @@
 import React, {useEffect, useRef, useState} from 'react';
-import {ActivityIndicator, Alert, AppState, FlatList, KeyboardAvoidingView, Platform, Pressable, RefreshControl, SafeAreaView, ScrollView, StatusBar, StyleSheet, Switch, Text, TextInput, View} from 'react-native';
+import {ActivityIndicator, Alert, AppState, FlatList, KeyboardAvoidingView, Platform, BackHandler, Pressable, RefreshControl, SafeAreaView, ScrollView, StatusBar, StyleSheet, Switch, Text, TextInput, View} from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import * as LocalAuthentication from 'expo-local-authentication';
 import {CameraView, useCameraPermissions} from 'expo-camera';
@@ -93,10 +93,11 @@ function OperationsApp(){
   const [oldPassword,setOldPassword]=useState('');const [newPassword,setNewPassword]=useState('');
   const [email,setEmail]=useState('');const [password,setPassword]=useState('');const [org,setOrg]=useState(FIXED_ORG);
   const [cameraPermission,requestCameraPermission]=useCameraPermissions();const [scanField,setScanField]=useState<string|null>(null);
-  const [showMenu,setShowMenu]=useState(true);const [menuSearch,setMenuSearch]=useState('');const [action,setAction]=useState<{name:string,id:number}|null>(null);const [actionForm,setActionForm]=useState<Json>({});const [error,setError]=useState('');
+  const [showMenu,setShowMenu]=useState(false);const [menuSearch,setMenuSearch]=useState('');const [action,setAction]=useState<{name:string,id:number}|null>(null);const [actionForm,setActionForm]=useState<Json>({});const [error,setError]=useState('');
   const [compose,setCompose]=useState(false);const [form,setForm]=useState<Json>({});const [tab,setTab]=useState('dashboard');const [rows,setRows]=useState<Json[]>([]);const [summary,setSummary]=useState<Json>({});const [busy,setBusy]=useState(false);const [refreshing,setRefreshing]=useState(false);
   const [unpaidBreakMinutes,setUnpaidBreakMinutes]=useState('0');
   const roles:string[]=profile?.roles || [];
+  const routeTrail=useRef<Array<{tab:string,menu:boolean}>>([]);
   async function openScanner(field:string){
     try{
       const permission=cameraPermission?.granted?cameraPermission:await requestCameraPermission();
@@ -106,6 +107,37 @@ function OperationsApp(){
   }
 
   const allowed=(screen:string)=>roles.includes('owner')||(MENU[screen]||[]).some(x=>roles.includes(x));
+  function rememberCurrent(){
+    routeTrail.current.push({tab,menu:showMenu});
+    if(routeTrail.current.length>32)routeTrail.current.shift();
+  }
+  function navigateTo(screen:string){
+    if(!allowed(screen))return;
+    if(showMenu || tab!==screen)rememberCurrent();
+    setTab(screen);setShowMenu(false);setCompose(false);setAction(null);setForm({});
+  }
+  function openWorkspaces(){
+    if(!showMenu){rememberCurrent();setShowMenu(true);setCompose(false);setAction(null);}
+  }
+  function navigateBack(){
+    if(scanField){setScanField(null);return;}
+    if(action){setAction(null);setActionForm({});return;}
+    if(compose){setCompose(false);return;}
+    const previous=routeTrail.current.pop();
+    if(previous){
+      setTab(previous.tab);setShowMenu(previous.menu);
+      setAction(null);setCompose(false);return;
+    }
+    if(showMenu||tab!=='dashboard'){setTab('dashboard');setShowMenu(false);return;}
+    // Consume hardware back on the root screen instead of minimizing or exiting.
+  }
+  useEffect(()=>{
+    const sub=BackHandler.addEventListener('hardwareBackPress',()=>{
+      navigateBack();
+      return true;
+    });
+    return ()=>sub.remove();
+  },[scanField,action,compose,showMenu,tab,profile]);
   async function request(path:string,init:RequestInit={},t=token){
     if(!API || !ENV_OK)throw new Error('Application server is not securely configured. Ask your administrator.');
     const resp=await fetch(API+'/api'+path,{...init,headers:{'Content-Type':'application/json',...(t?{Authorization:'Bearer '+t}:{}),...(init.headers||{})}});
@@ -123,7 +155,7 @@ function OperationsApp(){
           const biometrics=await LocalAuthentication.authenticateAsync({promptMessage:'Unlock PASH Auto Operations',biometricsSecurityLevel:'strong'});
           if(!biometrics.success){await SecureStore.deleteItemAsync('pash_token');return;}
         }
-        const me=await request('/auth/me',{},old);setToken(old);setProfile(me);
+        const me=await request('/auth/me',{},old);setToken(old);setProfile(me);setShowMenu(false);
       }
     }catch{try{await SecureStore.deleteItemAsync('pash_token')}catch{/* token may be unreadable */}}finally{setLoading(false)}
   })()},[]);
@@ -137,7 +169,7 @@ function OperationsApp(){
             if(result.success)return;
           }catch{/* fail closed to password */}
         }
-        try{await SecureStore.deleteItemAsync('pash_token')}catch{/* safe lock */}setToken('');setProfile(null);setShowMenu(true);
+        try{await SecureStore.deleteItemAsync('pash_token')}catch{/* safe lock */}setToken('');setProfile(null);routeTrail.current=[];setShowMenu(false);
         Alert.alert('Session locked','Please sign in again to continue.');
       }
     });
@@ -156,8 +188,8 @@ function OperationsApp(){
   async function disableBiometrics(){await SecureStore.deleteItemAsync('pash_biometric');setBiometricEnabled(false);}
 
   useEffect(()=>{if(!profile||tab==='account')return;load(tab)},[tab,profile]);
-  async function login(){setBusy(true);try{const d=await request('/auth/login',{method:'POST',body:JSON.stringify({email,password,organization_id:Number(org)})},'');await SecureStore.setItemAsync('pash_token',d.access_token);setToken(d.access_token);setProfile(d.user);setPassword('');setShowMenu(true);}catch(e:any){Alert.alert('Unable to sign in',e.message)}finally{setBusy(false)}}
-  async function logout(){if(token){try{await request('/auth/logout',{method:'POST'});}catch{/* clear device token even when offline */}}await SecureStore.deleteItemAsync('pash_token');setToken('');setProfile(null);setRows([]);setTab('dashboard');setShowMenu(true);setAction(null);setError('');}
+  async function login(){setBusy(true);try{const d=await request('/auth/login',{method:'POST',body:JSON.stringify({email,password,organization_id:Number(org)})},'');await SecureStore.setItemAsync('pash_token',d.access_token);setToken(d.access_token);setProfile(d.user);setPassword('');routeTrail.current=[];setTab('dashboard');setShowMenu(false);}catch(e:any){Alert.alert('Unable to sign in',e.message)}finally{setBusy(false)}}
+  async function logout(){if(token){try{await request('/auth/logout',{method:'POST'});}catch{/* clear device token even when offline */}}await SecureStore.deleteItemAsync('pash_token');setToken('');setProfile(null);setRows([]);setTab('dashboard');routeTrail.current=[];setShowMenu(false);setAction(null);setError('');}
   async function load(target:string){setRefreshing(true);setError('');try{if(target==='dashboard')setSummary(await request('/dashboard'));else setRows(await request(PATHS[target]||'/'+target));}catch(e:any){if(String(e.message).toLowerCase().includes('token')||String(e.message).toLowerCase().includes('not authenticated')){await logout();Alert.alert('Session expired','Sign in again to continue.');return;}setError(e.message);}finally{setRefreshing(false)}}
   function readFields(spec:CreateSpec):Json{
     const out:Json={};
@@ -258,6 +290,7 @@ function OperationsApp(){
   }
   function openForm(screen:string,defaults:Json={}){
     if(!allowed(screen))return;
+    if(showMenu||tab!==screen)rememberCurrent();
     setTab(screen);setForm(defaults);setCompose(true);setShowMenu(false);setAction(null);
   }
   async function passwordChange(){

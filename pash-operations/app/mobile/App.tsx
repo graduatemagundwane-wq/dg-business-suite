@@ -87,7 +87,7 @@ function Button({label,onPress,secondary=false,disabled=false}:{label:string,onP
 function Field({label,value,set,secure=false,number=false,multiline=false}:{label:string,value:string,set:(v:string)=>void,secure?:boolean,number?:boolean,multiline?:boolean}){
   return <View style={styles.field}><Text style={styles.label}>{label}</Text><TextInput autoCapitalize="none" autoCorrect={false} secureTextEntry={secure} multiline={multiline} textAlignVertical="top" keyboardType={number?'numeric':'default'} value={value} onChangeText={set} style={[styles.input,multiline?{height:115,paddingVertical:13}:null]} placeholderTextColor="#9CA9B0" /></View>;
 }
-export default function App(){
+function OperationsApp(){
   const [biometricEnabled,setBiometricEnabled]=useState(false);const backgroundAt=useRef<number|null>(null);
   const [token,setToken]=useState('');const [profile,setProfile]=useState<Json|null>(null);const [loading,setLoading]=useState(true);
   const [oldPassword,setOldPassword]=useState('');const [newPassword,setNewPassword]=useState('');
@@ -125,7 +125,7 @@ export default function App(){
         }
         const me=await request('/auth/me',{},old);setToken(old);setProfile(me);
       }
-    }catch{await SecureStore.deleteItemAsync('pash_token')}finally{setLoading(false)}
+    }catch{try{await SecureStore.deleteItemAsync('pash_token')}catch{/* token may be unreadable */}}finally{setLoading(false)}
   })()},[]);
   useEffect(()=>{
     const subscription=AppState.addEventListener('change',async state=>{
@@ -137,7 +137,7 @@ export default function App(){
             if(result.success)return;
           }catch{/* fail closed to password */}
         }
-        await SecureStore.deleteItemAsync('pash_token');setToken('');setProfile(null);setShowMenu(true);
+        try{await SecureStore.deleteItemAsync('pash_token')}catch{/* safe lock */}setToken('');setProfile(null);setShowMenu(true);
         Alert.alert('Session locked','Please sign in again to continue.');
       }
     });
@@ -438,6 +438,39 @@ export default function App(){
     <View style={styles.bottom}><Text style={styles.bottomText}>PASH AUTO OPERATIONS  •  DOUBLE GEE TECH</Text><Pressable onPress={logout}><Text style={styles.logout}>SIGN OUT</Text></Pressable></View>
   </SafeAreaView>;
 }
+/**
+ * Visible fallback for recoverable React rendering failures.
+ * This cannot handle a native crash; the Android emulator/logcat smoke test
+ * covers that separately. Never log tokens, passwords or customer data.
+ */
+class OperationsErrorBoundary extends React.Component<{children:React.ReactNode},{failed:boolean,reset:number}> {
+  constructor(props:{children:React.ReactNode}){
+    super(props);
+    this.state={failed:false,reset:0};
+  }
+  static getDerivedStateFromError(){return {failed:true};}
+  componentDidCatch(error:Error){
+    console.error('PASH_OPERATIONS_RENDER_FAILURE', error.name);
+  }
+  render(){
+    if(!this.state.failed)return this.props.children;
+    return <SafeAreaView style={{flex:1,backgroundColor:'#101A25',justifyContent:'center',padding:26}}>
+      <Text style={{fontSize:28,fontWeight:'900',color:'#FFFFFF'}}>PASH / AUTO</Text>
+      <Text style={{fontSize:23,fontWeight:'800',color:'#FFFFFF',marginTop:32}}>We couldn't open this workspace</Text>
+      <Text style={{color:'#B8C9CF',marginTop:14,lineHeight:22}}>Your server data has not been changed. Restart the workspace without clearing the app's saved data.</Text>
+      <Pressable accessibilityRole="button" onPress={()=>this.setState(old=>({failed:false,reset:old.reset+1}))}
+        style={{backgroundColor:'#159E86',padding:16,borderRadius:12,marginTop:28}}>
+        <Text style={{color:'#FFFFFF',fontWeight:'800',textAlign:'center'}}>TRY AGAIN</Text>
+      </Pressable>
+      <Text style={{color:'#9DB5BE',fontSize:12,marginTop:20}}>Error code: PASH-RENDER-01. Report this screen if it repeats.</Text>
+    </SafeAreaView>;
+  }
+}
+
+export default function App(){
+  return <OperationsErrorBoundary><OperationsApp /></OperationsErrorBoundary>;
+}
+
 const styles=StyleSheet.create({
   booleanField:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',paddingVertical:15,paddingHorizontal:10,borderBottomWidth:1,borderBottomColor:C.line},
   menuButton:{alignSelf:'flex-start',borderRadius:8,borderColor:'#4A5E68',borderWidth:1,marginTop:15,paddingHorizontal:13,paddingVertical:10},

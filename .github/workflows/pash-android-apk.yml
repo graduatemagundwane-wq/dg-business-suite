@@ -75,10 +75,10 @@ jobs:
           p=Path("pash-operations/app/mobile/app.json")
           cfg=json.loads(p.read_text())
           exp=cfg["expo"]
-          exp["version"]="0.5.3"
+          exp["version"]="0.5.4"
           exp["icon"]="./assets/icon.png"
           exp["android"]["icon"]="./assets/icon.png"
-          exp["android"]["versionCode"]=7
+          exp["android"]["versionCode"]=8
           exp["android"]["adaptiveIcon"]={"foregroundImage":"./assets/adaptive-icon.png","backgroundColor":"#FFFFFF"}
           exp["splash"]={"image":"./assets/splash.png","resizeMode":"contain","backgroundColor":"#FFFFFF"}
           p.write_text(json.dumps(cfg,indent=2))
@@ -90,7 +90,7 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Verify barcode utility
         working-directory: pash-operations/app/mobile
-        run: node --test tests/scan.test.js
+        run: node --test tests/*.test.js
       - name: TypeScript typecheck
         working-directory: pash-operations/app/mobile
         run: npx tsc --noEmit

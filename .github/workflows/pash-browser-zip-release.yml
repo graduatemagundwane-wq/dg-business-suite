@@ -1,0 +1,60 @@
+name: Publish PASH Operations QA ZIP for browser download
+on:
+  push:
+    branches:
+      - pash-auto-operations-qa-20261024
+    paths:
+      - '.github/workflows/pash-browser-zip-release.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+  actions: read
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download verified Android build 8 artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          mkdir -p pash-apk
+          gh run download 41607558157 --repo "$GH_REPO" --name PASH-Auto-Operations-Standalone-QA --dir pash-apk
+          find pash-apk -maxdepth 8 -type f -printf '%p (%s bytes)\\n'
+      - name: Package APK only, validate integrity
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib, zipfile
+          apklist=list(Path('pash-apk').rglob('app-release.apk'))
+          assert len(apklist)==1, f'Expected exactly one APK, found {len(apklist)}'
+          apk=apklist[0]
+          assert apk.stat().st_size > 70_000_000, 'Unexpected APK size'
+          zipname='PASH-Auto-Operations-v0.5.4-QA-APK.zip'
+          with zipfile.ZipFile(zipname,'w',compression=zipfile.ZIP_DEFLATED,compresslevel=9) as archive:
+              archive.write(apk, 'PASH-Auto-Operations-v0.5.4-QA.apk')
+          with zipfile.ZipFile(zipname) as archive:
+              assert archive.testzip() is None
+              assert archive.namelist()==['PASH-Auto-Operations-v0.5.4-QA.apk']
+              assert archive.infolist()[0].file_size==apk.stat().st_size
+          print('Verified ZIP size',Path(zipname).stat().st_size)
+          print('APK sha256',hashlib.sha256(apk.read_bytes()).hexdigest())
+          print('ZIP sha256',hashlib.sha256(Path(zipname).read_bytes()).hexdigest())
+          PY
+      - name: Publish direct browser download as a prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          TAG="pash-auto-operations-v0.5.4-qa-20261103"
+          FILE="PASH-Auto-Operations-v0.5.4-QA-APK.zip"
+          if gh release view "$TAG" --repo "$GH_REPO" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$FILE" --clobber --repo "$GH_REPO"
+          else
+            gh release create "$TAG" "$FILE" --repo "$GH_REPO" \
+              --target pash-auto-operations-qa-20261024 \
+              --title "PASH Auto Operations v0.5.4 — Android QA" \
+              --notes "QA build 8 of the PASH Auto Administration Android app. Includes the signed APK in a ZIP for browser download. Do not uninstall the previous version before updating. This is a test release and not production certified." \
+              --prerelease
+          fi
+          gh release view "$TAG" --repo "$GH_REPO" --json url,assets --jq '{url:.url,assets:[.assets[]|{name:.name,url:.url,size:.size}]}'

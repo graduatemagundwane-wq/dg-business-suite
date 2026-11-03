@@ -62,7 +62,7 @@ jobs:
           app=next(data for info,data in entries if info.filename==app_path).decode('utf8')
           html=next(data for info,data in entries if info.filename==html_path).decode('utf8')
           original_pattern=r'const asset\s*=\s*name\s*=>\s*`/assets/\$\{name\}\.webp(?:\?[^\\`]+)?`'
-          new_asset='const asset = name => `/assets/\${name}.webp?v=eagle-b2-20261103`'
+          new_asset='const asset = name => `/assets/${name}.webp?v=eagle-b2-20261103`'
           app,app_count=re.subn(original_pattern,lambda m:new_asset,app,count=1)
           assert app_count==1,'Failed to set asset cache-busting URL'
           html,html_count=re.subn(r'/app\.js(?:\?[^"\s]+)?(?=")', '/app.js?v=eagle-b2-20261103',html)

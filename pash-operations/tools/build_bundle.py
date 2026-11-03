@@ -26,3 +26,5 @@ with zipfile.ZipFile(io.BytesIO(raw)) as z:
 assert len(raw) < 2_000_000, "Unexpectedly large source bundle"
 archive.write_text(base64.b64encode(raw).decode("ascii") + "\n")
 print(f"Rebuilt {archive} with {len(paths)} source files; ZIP {len(raw)} bytes")
+
+# Android QA stability revision 20261103

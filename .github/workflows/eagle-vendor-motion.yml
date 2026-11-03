@@ -1,0 +1,70 @@
+name: Bundle Eagle Motion Libraries Locally
+on:
+  push:
+    branches: [eagle-motion-menu-loader-20261103]
+    paths: ['.github/workflows/eagle-vendor-motion.yml']
+permissions:
+  contents: write
+jobs:
+  vendor-and-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned motion dependencies
+        run: |
+          npm install --prefix /tmp/eagle-motion-vendor --no-audit --no-fund --ignore-scripts gsap@3.15.0 lenis@1.3.27
+          test -s /tmp/eagle-motion-vendor/node_modules/gsap/dist/gsap.min.js
+          test -s /tmp/eagle-motion-vendor/node_modules/gsap/dist/ScrollTrigger.min.js
+          test -s /tmp/eagle-motion-vendor/node_modules/lenis/dist/lenis.min.js
+      - name: Preserve website and embed vendor scripts
+        run: |
+          python3 - <<'PY'
+          import zipfile,os,hashlib
+          archive='eagle-site.zip';root='eagle-construction-website/'
+          vendor={
+            root+'assets/vendor/gsap.min.js':'/tmp/eagle-motion-vendor/node_modules/gsap/dist/gsap.min.js',
+            root+'assets/vendor/ScrollTrigger.min.js':'/tmp/eagle-motion-vendor/node_modules/gsap/dist/ScrollTrigger.min.js',
+            root+'assets/vendor/lenis.min.js':'/tmp/eagle-motion-vendor/node_modules/lenis/dist/lenis.min.js'}
+          with zipfile.ZipFile(archive) as z:
+            old=[(info,z.read(info.filename)) for info in z.infolist()]
+          previous={info.filename:data for info,data in old}
+          patch=root+'app.js'
+          before=previous[patch].decode('utf-8')
+          after=open('eagle-motion-source/app.js','r').read()
+          for needle in ['/assets/vendor/gsap.min.js','/assets/vendor/ScrollTrigger.min.js','/assets/vendor/lenis.min.js']:
+            assert needle in after,needle
+          for needle in ['https://cdn.jsdelivr.net/npm/gsap','https://cdn.jsdelivr.net/npm/lenis']:
+            assert needle not in after,needle
+          assert len(after)>len(before)-500
+          with zipfile.ZipFile(archive+'.new','w') as dest:
+            for info,data in old:
+              dest.writestr(info,after.encode('utf8') if info.filename==patch else data)
+            for name,path in vendor.items():
+              assert name not in previous
+              dest.write(path,arcname=name,compress_type=zipfile.ZIP_DEFLATED)
+          with zipfile.ZipFile(archive+'.new') as z:
+            assert z.testzip() is None
+            assert len(z.namelist())==len(old)+3
+            for info,data in old:
+              if info.filename!=patch:assert z.read(info.filename)==data,'Unwanted change: '+info.filename
+            for name in vendor:
+              assert len(z.read(name))>10000,name
+          os.replace(archive+'.new',archive)
+          print('SUCCESS: 3 pinned local motion libraries added. Only app.js changed. All existing files preserved.')
+          PY
+      - name: Confirm server syntax, routes and all original tests
+        run: |
+          mkdir -p /tmp/eagle-local-vendor-test
+          unzip -qo eagle-site.zip -d /tmp/eagle-local-vendor-test
+          cd /tmp/eagle-local-vendor-test/eagle-construction-website
+          node --check app.js
+          node --test tests.mjs
+          for file in gsap.min.js ScrollTrigger.min.js lenis.min.js; do test -s "assets/vendor/$file"; done
+      - name: Commit isolated verified archive
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add eagle-site.zip
+          git diff --cached --quiet && { echo 'No vendor changes'; exit 1; }
+          git commit -m 'Eagle premium motion: bundle pinned GSAP ScrollTrigger and Lenis locally'
+          git push origin HEAD:eagle-motion-menu-loader-20261103

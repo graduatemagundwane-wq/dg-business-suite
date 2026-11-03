@@ -1,0 +1,140 @@
+name: PASH Auto Premium Mobile UI QA
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - pash-operations-premium-mobile-ui-20261103
+    paths:
+      - pash-operations/**
+      - .github/workflows/pash-android-apk.yml
+permissions:
+  contents: read
+jobs:
+  android-standalone-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      EXPO_PUBLIC_API_URL: https://pash-auto-operations-qa.onrender.com
+      EXPO_PUBLIC_ORGANIZATION_ID: "1"
+      CI: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Use GitHub runner preinstalled Android SDK
+        run: |
+          echo "ANDROID_HOME=${ANDROID_HOME:-/usr/local/lib/android/sdk}" >> "$GITHUB_ENV"
+          ls "${ANDROID_HOME:-/usr/local/lib/android/sdk}/build-tools" || true
+      - name: Validate checked-in premium mobile source
+        run: |
+          test -s pash-operations/app/mobile/App.tsx
+          test -s pash-operations/app/mobile/navigation.ts
+          test -s pash-operations/app/mobile/tests/navigation.test.js
+      - name: Confirm QA TypeScript corrections are included
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          app=Path('pash-operations/app/mobile/App.tsx').read_text()
+          assert ".concat([{text:'Cancel',onPress:()=>{}}])" not in app
+          assert "{action?.id===item.id?" not in app
+          PY
+      - name: Generate PASH official launcher and adaptive icon
+        run: |
+          python3 -m pip install --disable-pip-version-check Pillow
+          python3 - <<'PY'
+          import base64,io,json
+          from pathlib import Path
+          from PIL import Image
+          raw=Path("pash-operations/branding/pash-auto-official.webp.b64").read_text().strip()
+          brand=Image.open(io.BytesIO(base64.b64decode(raw))).convert("RGBA")
+          assets=Path("pash-operations/app/mobile/assets")
+          assets.mkdir(parents=True,exist_ok=True)
+          canvas=Image.new("RGBA",(1024,1024),"white")
+          full=brand.copy()
+          full.thumbnail((960,550),Image.Resampling.LANCZOS)
+          canvas.alpha_composite(full,((1024-full.width)//2,(1024-full.height)//2))
+          canvas.convert("RGB").save(assets/"icon.png")
+          adaptive=Image.new("RGBA",(1024,1024),(0,0,0,0))
+          compact=brand.copy()
+          compact.thumbnail((740,380),Image.Resampling.LANCZOS)
+          adaptive.alpha_composite(compact,((1024-compact.width)//2,(1024-compact.height)//2))
+          adaptive.save(assets/"adaptive-icon.png")
+          canvas.convert("RGB").save(assets/"splash.png")
+          p=Path("pash-operations/app/mobile/app.json")
+          cfg=json.loads(p.read_text())
+          exp=cfg["expo"]
+          exp["version"]="0.6.0"
+          exp["icon"]="./assets/icon.png"
+          exp["android"]["icon"]="./assets/icon.png"
+          exp["android"]["versionCode"]=9
+          exp["android"]["adaptiveIcon"]={"foregroundImage":"./assets/adaptive-icon.png","backgroundColor":"#FFFFFF"}
+          exp["splash"]={"image":"./assets/splash.png","resizeMode":"contain","backgroundColor":"#FFFFFF"}
+          p.write_text(json.dumps(cfg,indent=2))
+          assert (assets/"icon.png").stat().st_size>10000
+          print("Official PASH Auto EV & Hybrid Centre logo configured as launcher icon")
+          PY
+      - name: Install Expo dependencies
+        working-directory: pash-operations/app/mobile
+        run: npm install --no-audit --no-fund
+      - name: Verify barcode utility
+        working-directory: pash-operations/app/mobile
+        run: node --test tests/*.test.js
+      - name: TypeScript typecheck
+        working-directory: pash-operations/app/mobile
+        run: npx tsc --noEmit
+      - name: Generate Android native project
+        working-directory: pash-operations/app/mobile
+        run: npx expo prebuild --platform android --non-interactive --no-install
+      - name: Compile standalone QA release variant with embedded JS bundle
+        working-directory: pash-operations/app/mobile/android
+        run: |
+          chmod +x ./gradlew
+          ./gradlew --no-daemon --stacktrace assembleRelease
+      - name: Verify built APK exists and has a signature
+        working-directory: pash-operations/app/mobile
+        run: |
+          APK=android/app/build/outputs/apk/release/app-release.apk
+          test -s "$APK"
+          ls -lh "$APK"
+          "$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)/apksigner" verify --verbose "$APK"
+          echo "Checking JS bundle is embedded for offline startup (Metro NOT required)"
+          unzip -l "$APK" | grep 'assets/index.android.bundle'
+          test "$(unzip -p "$APK" assets/index.android.bundle | wc -c)" -gt 20000
+          sha256sum "$APK" > android-standalone-apk.sha256
+      - name: Upload APK and checksum
+        uses: actions/upload-artifact@v4
+        with:
+          name: PASH-Auto-Operations-Premium-UI-QA
+          path: |
+            pash-operations/app/mobile/android/app/build/outputs/apk/release/app-release.apk
+            pash-operations/app/mobile/android-standalone-apk.sha256
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Allow KVM access for Android emulator
+        run: |
+          sudo usermod -aG kvm "$USER" || true
+          sudo chmod 666 /dev/kvm || true
+      - name: Install and cold-start APK in Android 15 emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect
+          disable-animations: true
+          script: bash pash-operations/tools/qa_android_smoke.sh
+      - name: Upload Android runtime smoke diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: PASH-Auto-Premium-UI-Startup-Diagnostics
+          path: pash-operations/app/mobile/smoke/
+          if-no-files-found: ignore
+          retention-days: 7

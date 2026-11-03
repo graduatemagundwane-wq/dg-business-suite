@@ -1,0 +1,90 @@
+name: Eagle Construction Five Missing Photos
+on:
+  push:
+    branches: [deploy-eagle-construction-site-20261103]
+    paths: ['.github/workflows/eagle-final-five.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  install-five:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Replace only five original photos and refresh cache URLs
+        run: |
+          python3 -m pip install --quiet pillow
+          python3 - <<'PY'
+          import io, os, re, zipfile, hashlib
+          from PIL import Image
+          site_archive='eagle-site.zip'
+          fresh_archive='eagle-five-fresh-photos.zip'
+          names=['house-construction.webp','renovations.webp','swimming-pools.webp','plumbing.webp','workers.webp']
+          with zipfile.ZipFile(fresh_archive) as fresh:
+            assert sorted(fresh.namelist())==sorted(names),fresh.namelist()
+            photos={n:fresh.read(n) for n in names}
+            assert fresh.testzip() is None
+          for n,data in photos.items():
+            im=Image.open(io.BytesIO(data))
+            assert im.format=='WEBP',(n,im.format)
+            assert im.width>=1000 and im.height>=800,(n,im.size)
+            print('NEW',n,im.size,'bytes',len(data),'sha256',hashlib.sha256(data).hexdigest()[:16])
+          with zipfile.ZipFile(site_archive) as original:
+            files=[(i,original.read(i.filename)) for i in original.infolist()]
+            assert original.testzip() is None
+          contents={i.filename:b for i,b in files}
+          base='eagle-construction-website/'
+          paths={base+'assets/'+n:photos[n] for n in names}
+          assert set(paths)<=set(contents),'Image assets absent from source package'
+          for name,data in paths.items():
+            assert contents[name]!=data,'New photo is identical to old: '+name
+          app_path=base+'app.js'
+          index_path=base+'index.html'
+          style_path=base+'styles.css'
+          app=contents[app_path].decode('utf-8')
+          html=contents[index_path].decode('utf-8')
+          version='eagle-b3-20261103'
+          old_version='eagle-b2-20261103'
+          assert old_version in app,'Expected existing image helper cache key not found'
+          app=app.replace(old_version,version)
+          assert version in app
+          for n in ['house-construction','renovations','swimming-pools','plumbing','workers']:
+            assert n in app,'Image reference missing for '+n
+          app=re.sub(r'(/assets/workers\.webp)(?!\?)',r'\1?v='+version,app)
+          if old_version in html:
+            html=html.replace(old_version,version)
+          elif '/app.js"' in html:
+            html=html.replace('/app.js"','/app.js?v='+version+'"')
+          assert version in html,'App script version was not changed'
+          paths[app_path]=app.encode('utf-8')
+          paths[index_path]=html.encode('utf-8')
+          with zipfile.ZipFile(site_archive+'.new','w') as output:
+            for info,data in files:
+              output.writestr(info,paths.get(info.filename,data))
+          with zipfile.ZipFile(site_archive+'.new') as result:
+            assert result.testzip() is None
+            assert len(result.infolist())==len(files)
+            for name,b in paths.items():
+              assert result.read(name)==b
+            for name,b in contents.items():
+              if name not in paths:
+                assert result.read(name)==b, 'Unexpected modification to '+name
+            assert result.read(style_path)==contents[style_path]
+          os.replace(site_archive+'.new',site_archive)
+          print('PASS: 5 photo replacements; site HTML and JS image URL versions refreshed; all other source files identical; CSS unchanged')
+          PY
+      - name: Smoke test final original website package
+        run: |
+          unzip -qo eagle-site.zip -d /tmp/eagle-five-smoke
+          cd /tmp/eagle-five-smoke/eagle-construction-website
+          node --check app.js
+          node --check server.mjs
+          node --test tests.mjs
+      - name: Commit verified website archive
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add eagle-site.zip
+          git diff --cached --quiet && { echo 'No changes'; exit 1; }
+          git commit -m 'Replace five remaining Eagle Construction images without design changes'
+          git push origin HEAD:deploy-eagle-construction-site-20261103

@@ -1,0 +1,25 @@
+const test=require('node:test');
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const path=require('node:path');
+const ts=require('typescript');
+const code=ts.transpileModule(fs.readFileSync(path.join(__dirname,'..','navigation.ts'),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText;
+const moduleRef={exports:{}};
+new Function('module','exports',code)(moduleRef,moduleRef.exports);
+const {resolveBack}=moduleRef.exports;
+const state={tab:'jobs',menu:false,scanner:false,action:false,compose:false};
+test('back closes scanner before other overlays',()=>assert.equal(resolveBack({...state,scanner:true,action:true,compose:true},[]).kind,'scanner'));
+test('back closes pending confirmations before forms',()=>assert.equal(resolveBack({...state,action:true,compose:true},[]).kind,'action'));
+test('back closes unsent forms before leaving workspace',()=>assert.equal(resolveBack({...state,compose:true},[]).kind,'compose'));
+test('back returns to prior exact workspace',()=>assert.deepEqual(resolveBack(state,[{tab:'dashboard',menu:false},{tab:'parts',menu:false}]),{kind:'route',route:{tab:'parts',menu:false}}));
+test('back returns to module picker when it was previous screen',()=>assert.deepEqual(resolveBack(state,[{tab:'jobs',menu:true}]),{kind:'route',route:{tab:'jobs',menu:true}}));
+test('back from module returns Home when no history exists',()=>assert.equal(resolveBack(state,[]).kind,'home'));
+test('back from Home is consumed instead of exiting',()=>assert.equal(resolveBack({...state,tab:'dashboard'},[]).kind,'root'));
+test('back from More with empty trail returns Home',()=>assert.equal(resolveBack({...state,tab:'dashboard',menu:true},[]).kind,'home'));
+test('Android BackHandler is wired to navigation resolver',()=>{
+ const app=fs.readFileSync(path.join(__dirname,'..','App.tsx'),'utf8');
+ assert.match(app,/BackHandler\.addEventListener\('hardwareBackPress'/);
+ assert.match(app,/resolveBack\(\{tab,menu:showMenu/);
+ assert.match(app,/return true;/);
+ assert.doesNotMatch(app,/BackHandler\.exitApp\(/);
+});

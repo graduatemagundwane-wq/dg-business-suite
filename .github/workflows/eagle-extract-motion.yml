@@ -1,0 +1,23 @@
+name: Stage Eagle Website UI Sources for Four Motion Fixes
+on:
+  push:
+    branches: [eagle-motion-menu-loader-20261103]
+    paths: ['.github/workflows/eagle-extract-motion.yml']
+permissions:
+  contents: write
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract original UI files unchanged
+        run: |
+          mkdir -p eagle-motion-source
+          for file in app.js styles.css index.html; do
+            unzip -p eagle-site.zip "eagle-construction-website/$file" > "eagle-motion-source/$file"
+          done
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add eagle-motion-source/
+          git commit -m 'Stage original Eagle UI source files for scoped motion enhancements'
+          git push origin HEAD:eagle-motion-menu-loader-20261103

@@ -1,0 +1,52 @@
+name: Eagle Construction Batch 2 Asset URL Hotfix
+on:
+  push:
+    branches: [deploy-eagle-construction-site-20261103]
+    paths: ['.github/workflows/eagle-b2-url-fix.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  fix-image-urls:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Correct image URL interpolation without changing design
+        run: |
+          python3 - <<'PY'
+          import zipfile,os
+          filename='eagle-site.zip'
+          app='eagle-construction-website/app.js'
+          with zipfile.ZipFile(filename) as z:
+            original=[(i,z.read(i.filename)) for i in z.infolist()]
+          contents=dict((i.filename,b) for i,b in original)
+          source=contents[app].decode('utf-8')
+          broken='const asset = name => `/assets/\\${name}.webp?v=eagle-b2-20261103`'
+          correct='const asset = name => `/assets/${name}.webp?v=eagle-b2-20261103`'
+          print('BROKEN_COUNT:',source.count(broken),'CORRECT_COUNT:',source.count(correct))
+          assert source.count(broken)==1, 'Expected precise broken URL helper'
+          fixed=source.replace(broken,correct)
+          assert '\\\${name}' not in fixed
+          contents[app]=fixed.encode('utf-8')
+          with zipfile.ZipFile(filename+'.fixed','w') as out:
+            for info,body in original:
+              out.writestr(info,contents[info.filename])
+          with zipfile.ZipFile(filename+'.fixed') as z:
+            assert z.testzip() is None
+            assert len(z.namelist())==len(original)
+            assert z.read(app)==fixed.encode('utf-8')
+          os.replace(filename+'.fixed',filename)
+          print('SUCCESS: URL-only fix, same images and unchanged design')
+          PY
+          unzip -qo eagle-site.zip -d /tmp/eagle-b2-smoke
+          node --check /tmp/eagle-b2-smoke/eagle-construction-website/app.js
+          cd /tmp/eagle-b2-smoke/eagle-construction-website
+          node --test tests.mjs
+      - name: Commit corrected packaged site
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add eagle-site.zip
+          git diff --cached --quiet && { echo 'No changes'; exit 1; }
+          git commit -m 'Fix Batch 2 asset cache-busting interpolation without design changes'
+          git push origin HEAD:deploy-eagle-construction-site-20261103

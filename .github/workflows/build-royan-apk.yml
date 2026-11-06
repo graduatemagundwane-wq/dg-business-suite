@@ -34,7 +34,11 @@ jobs:
           tar -xzf source.tar.gz
           test -f royan-android/app/src/main/java/zw/co/doublegeetech/royanadmin/MainActivity.java
       - name: Install Android 35
-        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+        shell: bash
+        run: |
+          SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -1)
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --sdk_root="$ANDROID_HOME" 'platforms;android-35' 'build-tools;35.0.0'
       - name: Compile and package APK
         working-directory: /tmp/royanbuild/royan-android
         run: gradle --no-daemon --stacktrace :app:assembleDebug

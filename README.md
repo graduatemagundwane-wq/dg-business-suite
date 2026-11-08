@@ -1,17 +1,11 @@
-# double_gee_po
+# IrvinAero Aviation — E-learning Staging
 
-A new Flutter project.
+This branch holds the IrvinAero 64-screen development platform for a separate Railway staging service. It is intentionally isolated from dg-business-suite main.
 
-## Getting Started
+- Backend: Python ThreadingHTTPServer, SQLite, PDF and QR-code libraries.
+- Frontend: vanilla JS/CSS responsive academy portal.
+- Operational dependencies: persistent Railway volume mounted at /data; IRVINAERO_DB=/data/irvinaero.sqlite3; IRVINAERO_UPLOADS=/data/uploads.
+- Demo accounts must NOT be enabled on public staging. IRVINAERO_DEMO=0; configure a unique IRVINAERO_ADMIN_PASSWORD and IRVINAERO_ADMIN_EMAIL in Railway variables.
+- Integrations (EcoCash/WhatsApp/SMS/Zoom/aviation licensing) are not connected. Do not accept real payments, personal student documents, or official flying hours in public staging.
 
-This project is a starting point for a Flutter application.
-
-A few resources to get you started if this is your first Flutter project:
-
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+The initial data and content is illustrative and subject to academic and regulatory approval.

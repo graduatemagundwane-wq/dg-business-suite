@@ -224,10 +224,11 @@ class _YolaOfflineWorkspaceState extends State<YolaOfflineWorkspace> {
 
   Widget _field(TextEditingController c,String title,{bool secret=false,
     TextInputType type=TextInputType.text,
-    ValueChanged<String>? onChanged}) => Padding(
+    ValueChanged<String>? onChanged,
+    ValueChanged<String>? onSubmitted}) => Padding(
     padding:const EdgeInsets.only(bottom:12),
     child:TextField(controller:c,obscureText:secret,keyboardType:type,
-      onChanged:onChanged,
+      onChanged:onChanged,onSubmitted:onSubmitted,
       decoration:InputDecoration(labelText:title,border:const OutlineInputBorder(),
         isDense:true,filled:true,fillColor:Colors.white)));
 
@@ -300,7 +301,18 @@ class _YolaOfflineWorkspaceState extends State<YolaOfflineWorkspace> {
         const SizedBox(height:12),
         Row(children:[
           Expanded(child:_field(_search,'Search name / SKU / barcode',
-            onChanged:(_)=>setState((){}))),
+            onChanged:(_)=>setState((){}),
+            onSubmitted:(value) {
+              final barcode=value.trim().toLowerCase();
+              for(final p in _products) {
+                if((p['barcode']??'').toString().trim().toLowerCase()==barcode &&
+                    barcode.isNotEmpty) {
+                  _add(p);
+                  _search.clear();
+                  return;
+                }
+              }
+            })),
           const SizedBox(width:8),
           IconButton(onPressed:_busy?null:_scan,
             tooltip:'Scan camera barcode',

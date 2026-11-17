@@ -150,7 +150,7 @@ class _YolaOfflineWorkspaceState extends State<YolaOfflineWorkspace> {
     }
     return cents;
   }
-  String _money(int cents) => '\$\${(cents/100).toStringAsFixed(2)}';
+  String _money(int cents) => String.fromCharCode(36) + (cents/100).toStringAsFixed(2);
 
   Future<void> _checkout() => _act(() async {
     if (_cart.isEmpty) throw StateError('The cart is empty.');

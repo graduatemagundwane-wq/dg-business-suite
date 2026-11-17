@@ -17,6 +17,10 @@ on:
       - '.github/workflows/build-yola-android-same-ui.yml'
   workflow_dispatch:
 
+concurrency:
+  group: yola-android-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -63,6 +67,7 @@ jobs:
               ImageOps.fit(img, (size,size), Image.Resampling.LANCZOS).save(path)
           print('PASS: same official Yola logo used in desktop Windows.')
           PY
+      - uses: gradle/actions/setup-gradle@v4
       - name: Accept required Android SDK licences and install pinned NDK
         shell: bash
         run: |
@@ -80,7 +85,15 @@ jobs:
       - name: Analyze licensed offline POS and WebView entrypoint
         run: flutter analyze --no-fatal-infos lib/main_yola_android.dart lib/yola_android/ lib/screens/barcode_scan.dart
       - name: Build APK - offline feature integration QA, not production certified
-        run: flutter build apk --release -t lib/main_yola_android.dart --build-name 0.2.0 --build-number 2
+        shell: bash
+        run: |
+          for attempt in 1 2 3; do
+            if flutter build apk --release -t lib/main_yola_android.dart --build-name 0.2.0 --build-number 2; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 3 ]; then exit 1; fi
+            sleep $((attempt * 20))
+          done
       - name: Package with clear TEST CANDIDATE status
         run: |
           mkdir -p yola-android-artifact

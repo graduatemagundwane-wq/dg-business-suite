@@ -1,4 +1,4 @@
-name: Yola Android Same-UI APK CANDIDATE
+name: Yola Android Offline Integration APK QA
 
 on:
   push:
@@ -6,6 +6,10 @@ on:
       - feature/yola-android-ui-parity-20261020
     paths:
       - 'lib/main_yola_android.dart'
+      - 'lib/yola_android/**'
+      - 'lib/screens/barcode_scan.dart'
+      - 'lib/services/pdf_service.dart'
+      - 'lib/services/receipt_service.dart'
       - 'pubspec.yaml'
       - 'pubspec.lock'
       - 'android/**'
@@ -73,28 +77,32 @@ jobs:
           test -f "${ANDROID_HOME}/ndk/30.0.14904198/source.properties"
       - name: Install Flutter project dependencies
         run: flutter pub get
-      - name: Analyze Android WebView entrypoint
-        run: flutter analyze lib/main_yola_android.dart
-      - name: Build APK - UI parity candidate, not offline certified
-        run: flutter build apk --release -t lib/main_yola_android.dart --build-name 0.1.0 --build-number 1
+      - name: Analyze licensed offline POS and WebView entrypoint
+        run: flutter analyze lib/main_yola_android.dart lib/yola_android/ lib/screens/barcode_scan.dart
+      - name: Build APK - offline feature integration QA, not production certified
+        run: flutter build apk --release -t lib/main_yola_android.dart --build-name 0.2.0 --build-number 2
       - name: Package with clear TEST CANDIDATE status
         run: |
           mkdir -p yola-android-artifact
-          cp build/app/outputs/flutter-apk/app-release.apk yola-android-artifact/Yola-Android-Same-UI-TEST-CANDIDATE.apk
+          cp build/app/outputs/flutter-apk/app-release.apk yola-android-artifact/Yola-Android-Offline-Integration-QA.apk
           sha256sum yola-android-artifact/*.apk > yola-android-artifact/SHA256.txt
           cat > yola-android-artifact/READ-ME-FIRST.txt <<'TXT'
-          YOLA Android — UI parity test candidate only
-          Same original hosted Yola frontend, phone and landscape tablet.
-          Requires internet and the running hosted Yola API.
-          Offline transactions, printer/scanner hardware and physical tablet
-          visual parity are NOT yet acceptance tested.
-          Signed with the Flutter project's DEBUG signing key. DO NOT hand
-          to a paying client as a production-ready APK.
+          YOLA Android — offline integration QA, NOT customer production.
+          Hosted Yola original interface remains the primary online UI.
+          Android sidecar: SQLite transaction-safe cash checkout, durable sync
+          outbox, original official DG Ed25519 licence and offline lease check,
+          owner PIN, barcode camera scan, Android PDF print/share.
+          Real device and printer/scanner acceptance testing still required.
+          Master Control hosted activation/status endpoints and cloud sync/event
+          reconciliation are required; do not bypass licence gating or mark
+          unsynced sales as cloud-complete.
+          Flutter DEBUG signing key in use. DO NOT deliver as a signed
+          customer release or claim complete offline cloud integration.
           TXT
       - name: Upload Android UI test artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Yola-Android-Same-UI-TEST-CANDIDATE
+          name: Yola-Android-Offline-Integration-QA
           retention-days: 30
           if-no-files-found: error
           path: yola-android-artifact/

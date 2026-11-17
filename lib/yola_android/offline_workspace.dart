@@ -103,6 +103,16 @@ class _YolaOfflineWorkspaceState extends State<YolaOfflineWorkspace> {
     if (mounted) setState(() { _license=info;_notice='Device activated. Enter offline PIN.'; });
   });
 
+  Future<void> _renew() => _act(() async {
+    final info = await YolaLicence.instance.renewOnlineLease();
+    if (mounted) {
+      setState(() {
+        _license=info;
+        _notice='Signed offline lease renewed by DG Tech Master Control.';
+      });
+    }
+  });
+
   Future<void> _unlock() => _act(() async {
     await YolaOfflinePin.instance.verify(_loginPin.text);
     await _refresh();
@@ -227,6 +237,9 @@ class _YolaOfflineWorkspaceState extends State<YolaOfflineWorkspace> {
       const SizedBox(height:18),
       _btn('Check approved licence',_claim,primary:false,
         icon:Icons.verified_user_outlined),
+      const SizedBox(height:10),
+      _btn('Renew existing lease online',_renew,primary:false,
+        icon:Icons.autorenew_outlined),
       const SizedBox(height:10),
       const Text('Until approval is confirmed, no offline sales are allowed.',
         style:TextStyle(fontSize:12)),
@@ -353,6 +366,9 @@ class _YolaOfflineWorkspaceState extends State<YolaOfflineWorkspace> {
       const Text('The queue is durable on this device. Yola must explicitly confirm cloud stock and ledger reconciliation. HTTP success alone never clears a sale.'),
       const SizedBox(height:18),
       _btn('Retry cloud reconciliation',_sync,icon:Icons.sync_rounded),
+      const SizedBox(height:10),
+      _btn('Renew signed offline lease',_renew,primary:false,
+        icon:Icons.verified_user_outlined),
       const SizedBox(height:10),
       _btn('Return to online Yola',widget.onReturnOnline,
         primary:false,icon:Icons.wifi_rounded),

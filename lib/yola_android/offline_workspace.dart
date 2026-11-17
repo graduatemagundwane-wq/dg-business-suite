@@ -80,7 +80,7 @@ class _YolaOfflineWorkspaceState extends State<YolaOfflineWorkspace> {
   }
 
   Future<void> _refresh() async {
-    final products = await YolaOfflineStore.instance.products(filter:_search.text);
+    final products = await YolaOfflineStore.instance.products();
     final sales = await YolaOfflineStore.instance.sales();
     final pending = await YolaOfflineStore.instance.pending();
     if (mounted) setState(() { _products=products;_sales=sales;_pending=pending; });
@@ -137,7 +137,6 @@ class _YolaOfflineWorkspaceState extends State<YolaOfflineWorkspace> {
       _add(match.first);
     } else {
       _search.text = code;
-      await _refresh();
       if (mounted) setState(() => _notice='No exact match. Search: $code');
     }
   }
@@ -205,9 +204,11 @@ class _YolaOfflineWorkspaceState extends State<YolaOfflineWorkspace> {
       label:Text(label));
 
   Widget _field(TextEditingController c,String title,{bool secret=false,
-    TextInputType type=TextInputType.text}) => Padding(
+    TextInputType type=TextInputType.text,
+    ValueChanged<String>? onChanged}) => Padding(
     padding:const EdgeInsets.only(bottom:12),
     child:TextField(controller:c,obscureText:secret,keyboardType:type,
+      onChanged:onChanged,
       decoration:InputDecoration(labelText:title,border:const OutlineInputBorder(),
         isDense:true,filled:true,fillColor:Colors.white)));
 
@@ -264,7 +265,10 @@ class _YolaOfflineWorkspaceState extends State<YolaOfflineWorkspace> {
     ]))));
 
   Widget _sellPage() {
-    final results=_products;
+    final term=_search.text.toLowerCase().trim();
+    final results=_products.where((p)=>term.isEmpty ||
+      [p['name'],p['sku'],p['barcode']].any((v)=>
+      (v??'').toString().toLowerCase().contains(term))).toList();
     return ListView(children:[
       _card(Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
         const Text('Offline cash sales',style:TextStyle(fontSize:22,
@@ -276,7 +280,8 @@ class _YolaOfflineWorkspaceState extends State<YolaOfflineWorkspace> {
           primary:false,icon:Icons.cloud_download_outlined),
         const SizedBox(height:12),
         Row(children:[
-          Expanded(child:_field(_search,'Search name / SKU / barcode')),
+          Expanded(child:_field(_search,'Search name / SKU / barcode',
+            onChanged:(_)=>setState((){}))),
           const SizedBox(width:8),
           IconButton(onPressed:_busy?null:_scan,
             tooltip:'Scan camera barcode',

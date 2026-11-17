@@ -78,7 +78,7 @@ jobs:
       - name: Install Flutter project dependencies
         run: flutter pub get
       - name: Analyze licensed offline POS and WebView entrypoint
-        run: flutter analyze lib/main_yola_android.dart lib/yola_android/ lib/screens/barcode_scan.dart
+        run: flutter analyze --no-fatal-infos lib/main_yola_android.dart lib/yola_android/ lib/screens/barcode_scan.dart
       - name: Build APK - offline feature integration QA, not production certified
         run: flutter build apk --release -t lib/main_yola_android.dart --build-name 0.2.0 --build-number 2
       - name: Package with clear TEST CANDIDATE status

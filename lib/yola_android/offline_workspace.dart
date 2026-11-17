@@ -159,6 +159,25 @@ class _YolaOfflineWorkspaceState extends State<YolaOfflineWorkspace> {
     }
     return cents;
   }
+  int get _discountCents {
+    final value=double.tryParse(_discount.text.trim()) ?? 0;
+    if(!value.isFinite || value < 0) return 0;
+    return (value*100).round();
+  }
+  int get _estimatedTax {
+    int tax=0;
+    for(final p in _products) {
+      final qty=_cart[p['product_id']]??0;
+      final net=(p['price_cents'] as num).toInt()*qty;
+      final bps=(p['tax_bps'] as num).toInt();
+      tax+=(net*bps/10000).round();
+    }
+    final subtotal=_subtotal;
+    if(subtotal<=0) return 0;
+    return (tax*(subtotal-_discountCents.clamp(0,subtotal))/subtotal).round();
+  }
+  int get _estimatedTotal => (_subtotal-_discountCents+_estimatedTax).clamp(0,1<<53);
+
   String _money(int cents) => String.fromCharCode(36) + (cents/100).toStringAsFixed(2);
 
   Future<void> _checkout() => _act(() async {
@@ -320,10 +339,15 @@ class _YolaOfflineWorkspaceState extends State<YolaOfflineWorkspace> {
         const Divider(height:25),
         Text('Subtotal  ${_money(_subtotal)}',
           style:const TextStyle(fontSize:19,fontWeight:FontWeight.bold)),
+        Text('Estimated tax  ${_money(_estimatedTax)}'),
+        Text('Total  ${_money(_estimatedTotal)}',
+          style:const TextStyle(fontSize:21,fontWeight:FontWeight.w900,color:_ink)),
         const SizedBox(height:14),
         _field(_cashier,'Cashier name'),
         _field(_customer,'Customer (optional)'),
-        _field(_discount,'Discount USD',type:const TextInputType.numberWithOptions(decimal:true)),
+        _field(_discount,'Discount USD',
+          type:const TextInputType.numberWithOptions(decimal:true),
+          onChanged:(_)=>setState((){})),
         const Text('Payment: CASH ONLY (received in person)',
           style:TextStyle(color:_accent,fontWeight:FontWeight.bold)),
         const SizedBox(height:12),

@@ -176,7 +176,10 @@ class _YolaOfflineWorkspaceState extends State<YolaOfflineWorkspace> {
     if(subtotal<=0) return 0;
     return (tax*(subtotal-_discountCents.clamp(0,subtotal))/subtotal).round();
   }
-  int get _estimatedTotal => (_subtotal-_discountCents+_estimatedTax).clamp(0,1<<53);
+  int get _estimatedTotal {
+    final total=_subtotal-_discountCents+_estimatedTax;
+    return total<0 ? 0 : total;
+  }
 
   String _money(int cents) => String.fromCharCode(36) + (cents/100).toStringAsFixed(2);
 

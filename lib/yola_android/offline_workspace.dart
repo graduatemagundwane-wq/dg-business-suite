@@ -179,8 +179,10 @@ class _YolaOfflineWorkspaceState extends State<YolaOfflineWorkspace> {
   Future<void> _sync() => _act(() async {
     final result=await YolaOfflineStore.instance.syncPending();
     await _refresh();
-    if (mounted) setState(() => _notice=
-      '${result['reconciled']} confirmed by cloud; ${result['remaining']} still on this device. ${result['error']??''}');
+    if (mounted) {
+      setState(() => _notice=
+        '${result['reconciled']} confirmed by cloud; ${result['remaining']} still on this device. ${result['error']??''}');
+    }
   });
 
   Widget _btn(String label,VoidCallback? press, {bool primary=true, IconData? icon}) =>

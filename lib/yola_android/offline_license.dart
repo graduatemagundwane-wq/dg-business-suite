@@ -92,6 +92,32 @@ class YolaLicence {
     return info;
   }
 
+  /// Renew the short offline lease only after live DG Master Control approves
+  /// the existing signed device licence. Never extend a lease locally.
+  Future<YolaLicenceInfo> renewOnlineLease() async {
+    final saved = await _storage.read(key: 'yola_android_license');
+    if (saved == null) throw StateError('This device is not activated yet.');
+    final original = (jsonDecode(saved) as Map).cast<String, dynamic>();
+    final licenseToken = original['license_token']?.toString() ?? '';
+    if (licenseToken.isEmpty) throw StateError('Missing original device licence.');
+    final latest = await _post('/api/license/verify', {
+      'device_id': await deviceId,
+      'license_token': licenseToken,
+      'app_version': 'android-offline-0.2',
+    });
+    if (latest['active'] != true || latest['status'] != 'active') {
+      throw StateError('Master Control has declined this licence.');
+    }
+    final leaseToken = latest['lease_token']?.toString();
+    if (leaseToken == null || leaseToken.isEmpty) {
+      throw StateError('Master Control did not issue a signed offline lease.');
+    }
+    final renewed = {...original, 'lease_token': leaseToken};
+    final info = await _verify(renewed, allowClockWrite: true);
+    await _storage.write(key:'yola_android_license',value:jsonEncode(renewed));
+    return info;
+  }
+
   Future<YolaLicenceInfo?> active() async {
     final saved = await _storage.read(key: 'yola_android_license');
     if (saved == null) return null;

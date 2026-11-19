@@ -93,6 +93,7 @@ class _YolaWorkerWorkspaceState extends State<YolaWorkerWorkspace> {
               const result = await r.json();
               return result.authenticated === true &&
                      result.user?.role === 'worker' &&
+                     result.user?.businessCode === 'YOLA-D8C868892683ECCE' &&
                      result.user?.license?.active === true;
             } catch (e) { return false; }
           })();

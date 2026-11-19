@@ -5,19 +5,19 @@
 /// Bind SAGRO_BUSINESS_ID to the existing Yola business registration ID at
 /// release time; a missing binding prevents document creation.
 class SagroBrand {
-  static const displayName = 'SAGRO SUPPLY & SUPPORT';
-  static const legalName = 'Infraclean Tech T/A SAGRO';
-  static const tradingDescription = 'Feedmix Distributor';
-  static const address = '738 Rujeko Phase 4, Glendale, Mazowe';
-  static const phone = '0790833331';
+  static const displayName = 'SARGO Supply & Support';
+  static const legalName = 'SARGO Supply & Support';
+  static const tradingDescription = '';
+  static const address = 'Plot 9 Sub division 18, Welston, Glen Forest, Harare';
+  static const phone = '+44 7419 339101';
   static const logoAsset = 'assets/sagro/sagro_logo.jpg';
   static const existingBusinessId = String.fromEnvironment(
     'SAGRO_BUSINESS_ID',
-    defaultValue: '',
+    defaultValue: '9cdeb31c-0883-4ba0-8d20-50d115011e2c',
   );
 
   static String get documentAddress =>
-      '$legalName\n$tradingDescription\n$address';
+      '$legalName\n$address';
 
   static void requireAuthorisedBusiness(String actualBusinessId) {
     if (existingBusinessId.isEmpty) {

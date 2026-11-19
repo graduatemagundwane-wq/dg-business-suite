@@ -42,6 +42,7 @@ class _YolaWorkspaceWebViewState extends State<YolaWorkspaceWebView> {
   late final WebViewController _web;
   bool _loading=true, _failed=false, _online=true;
   int _initialOfflineTab = 0;
+  bool _workerOfflineActive = false;
   Completer<int>? _catalogRequest;
   String? _catalogNonce;
 
@@ -161,6 +162,7 @@ class _YolaWorkspaceWebViewState extends State<YolaWorkspaceWebView> {
 
   Future<void> _back() async {
     if (!_online) {
+      if (_workerOfflineActive) return;
       setState(() => _online=true);
       return;
     }
@@ -254,7 +256,13 @@ class _YolaWorkspaceWebViewState extends State<YolaWorkspaceWebView> {
             ]),
             YolaOfflineWorkspace(
               initialTab:_initialOfflineTab,
-              onReturnOnline:()=>setState(()=>_online=true),
+              onReturnOnline:(){
+                if (_workerOfflineActive) return;
+                setState(()=>_online=true);
+              },
+              onWorkerAuthChanged:(active){
+                if(mounted) setState(()=>_workerOfflineActive=active);
+              }, 
               onCacheOnlineProducts:_cacheOnlineProducts,
             )
           ],

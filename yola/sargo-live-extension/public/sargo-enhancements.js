@@ -21,6 +21,25 @@
     (available?'Available to sell':'Unavailable')+'</small></span>'+
     '<span class="addglyph" aria-hidden="true">+</span></button>';
  };
+ const originalRenderProducts=renderProducts;
+ renderProducts=function(){
+  if(!isWorker())return originalRenderProducts();
+  const box=document.getElementById('results');
+  const filter=document.getElementById('product-filter');
+  if(!box || !filter)return;
+  const term=filter.value.trim().toLowerCase();
+  box.innerHTML=products.filter(p=>
+    (activeCategory==='All'||p.category===activeCategory) &&
+    (!term||[p.name,p.sku,p.barcode,p.category].some(v=>String(v||'').toLowerCase().includes(term)))
+  ).slice(0,80).map(productButton).join('')||
+    '<div class="empty">No matching products. Ask the administrator to check availability.</div>';
+  box.querySelectorAll('[data-add]').forEach(b=>b.onclick=()=>{
+    const p=products.find(x=>x.id===b.dataset.add);
+    if(!p || p.available!==true)return flash('Product unavailable.',true);
+    cart.set(p.id,(cart.get(p.id)||0)+1);
+    renderCart();
+  });
+ };
  const originalSell=sell;
  sell=async function(){
    await originalSell();
@@ -34,6 +53,21 @@
      const row=discount.closest('label');
      if(row)row.style.display='none';
    }
+   const restore=document.getElementById('restorecart');
+   if(restore)restore.onclick=()=>{
+     try{
+       const key='yola-held-cart-'+user.id;
+       const prior=JSON.parse(localStorage.getItem(key)||'[]');
+       cart.clear();
+       for(const [id,qty] of prior){
+         const p=products.find(x=>x.id===id);
+         if(p && p.available===true && Number.isInteger(qty) && qty>0)
+           cart.set(id,Math.min(qty,100));
+       }
+       renderCart();
+       flash('Held cart restored. Final checkout validates current stock.');
+     }catch(e){flash('Could not restore held cart.',true)}
+   };
    const navBox=document.getElementById('sidebar-nav');
    if(navBox){
      navBox.querySelectorAll('[data-page]').forEach(btn=>{
@@ -224,6 +258,6 @@
  }
  // If the core has already created its nav, immediately re-render permissions.
  if(user?.role==='worker'){
-  try { nav(); if(screen!=='sell')go('sell'); }catch(e){}
+  try { nav(); go('sell'); }catch(e){}
  }
 })();

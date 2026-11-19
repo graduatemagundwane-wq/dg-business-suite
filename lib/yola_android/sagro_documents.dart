@@ -91,7 +91,7 @@ class _SagroDocumentsState extends State<SagroDocuments> {
       shopAddress: SagroBrand.documentAddress,
       phoneNumber: SagroBrand.phone,
       logoPath: SagroBrand.logoAsset,
-      cashierName: 'SAGRO',
+      cashierName: 'SARGO',
       customerName: customer,
       paymentMethod: type == ReceiptDocumentType.quotation
           ? 'Not a payment receipt' : 'Not marked as paid',
@@ -101,7 +101,7 @@ class _SagroDocumentsState extends State<SagroDocuments> {
         unitPrice: line.cents/100,
         total: line.qty*line.cents/100)).toList(),
       subtotal: total/100, grandTotal: total/100,
-      footerMessage: 'Thank you for choosing SAGRO.',
+      footerMessage: 'Thank you for choosing SARGO.',
       taxNumber: '', showLogo: true, showQrCode: false,
       paperSize: ReceiptPaperSize.a4Invoice,
       documentType: type,
@@ -201,7 +201,7 @@ class _SagroDocumentsState extends State<SagroDocuments> {
   @override
   Widget build(BuildContext context) => ListView(
     padding: const EdgeInsets.all(8), children: [
-      const Text('SAGRO Documents',
+      const Text('SARGO Documents',
         style: TextStyle(fontSize: 23, fontWeight: FontWeight.bold)),
       const Text('Quotations and invoices do not deduct stock or record payment.'),
       const SizedBox(height: 12),

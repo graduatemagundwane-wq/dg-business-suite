@@ -1,0 +1,108 @@
+name: Yola SARGO Worker Android APK QA
+
+on:
+  push:
+    branches:
+      - client/sagro-android-20261119
+    paths:
+      - 'lib/main_yola_worker.dart'
+      - 'android/**'
+      - '.github/workflows/build-yola-worker-android.yml'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: yola-sargo-worker-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  worker-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Verify original Yola online UI and worker gate
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          source = Path('lib/main_yola_worker.dart').read_text()
+          assert 'yola-onboarding.vercel.app' in source
+          assert "result.user?.role === 'worker'" in source
+          assert "page === 'sell'" in source
+          assert 'Yola Worker' in source
+          assert 'credentials:' in source
+          print('PASS: worker-only web wrapper, same official Yola origin and accounts.')
+          PY
+      - name: Apply original Yola app icon
+        run: |
+          python -m pip install --quiet pillow
+          python - <<'PY'
+          import base64, io
+          from pathlib import Path
+          from PIL import Image, ImageOps
+          img = Image.open(io.BytesIO(base64.b64decode(Path('yola/windows/brand.webp.b64').read_text().strip()))).convert('RGBA')
+          for density, size in [('mdpi',48), ('hdpi',72), ('xhdpi',96), ('xxhdpi',144), ('xxxhdpi',192)]:
+              path = Path(f'android/app/src/main/res/mipmap-{density}/ic_launcher.png')
+              path.parent.mkdir(parents=True, exist_ok=True)
+              ImageOps.fit(img, (size, size), Image.Resampling.LANCZOS).save(path)
+          PY
+      - name: Separate package ID and worker app label
+        run: |
+          sed -i 's/applicationId = "com.doublegeetech.yola.android"/applicationId = "com.doublegeetech.yola.worker"/' android/app/build.gradle.kts
+          sed -i 's/android:label="Yola"/android:label="Yola Worker"/' android/app/src/main/AndroidManifest.xml
+          grep -q 'com.doublegeetech.yola.worker' android/app/build.gradle.kts
+          grep -q 'android:label="Yola Worker"' android/app/src/main/AndroidManifest.xml
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Accept SDK licences and install NDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER="$(find "${ANDROID_HOME}/cmdline-tools" -name sdkmanager -type f | head -1)"
+          fi
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || test "${PIPESTATUS[1]}" -eq 0
+          "$SDKMANAGER" --install "ndk;30.0.14904198"
+      - name: Install dependencies and analyze
+        run: |
+          flutter pub get
+          flutter analyze --no-fatal-infos lib/main_yola_worker.dart
+      - name: Build separate Android worker APK
+        run: |
+          flutter build apk --release -t lib/main_yola_worker.dart --build-name 0.2.1 --build-number 3
+      - name: Package worker APK and QA notice
+        run: |
+          mkdir -p yola-worker-qa
+          cp build/app/outputs/flutter-apk/app-release.apk yola-worker-qa/Yola-Worker-SalesOnly-TEST.apk
+          (cd yola-worker-qa && sha256sum Yola-Worker-SalesOnly-TEST.apk > SHA256.txt)
+          cat > yola-worker-qa/READ-ME-FIRST.txt <<'TXT'
+          Yola Worker for SARGO — QA TEST ONLY, not a production-signed release.
+          Original Yola interface and SAME Yola employee credentials.
+          Worker-only navigation: Sell. No inventory, accounting, staff
+          management, reports, quotations, or settings.
+          Role guard requires an active worker account. Server-side roles
+          remain authoritative. Online only. Worker accounts must first be
+          created on the Yola backend.
+          Production server still requires the staff creation and progress
+          release candidate to be integrated and end-to-end tested.
+          Signed with Flutter development signing, NOT customer production.
+          TXT
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Yola-SARGO-Worker-SalesOnly-QA
+          path: yola-worker-qa/
+          retention-days: 30
+          if-no-files-found: error

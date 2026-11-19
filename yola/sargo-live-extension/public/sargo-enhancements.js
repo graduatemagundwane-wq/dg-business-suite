@@ -3,7 +3,9 @@
 // All privileged data is protected again on the server; UI hiding alone is not authorization.
 (function(){
  const escape=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
- const isWorker=()=>user&&user.role==='worker';
+ const sargoTenant='YOLA-D8C868892683ECCE';
+ const isSargo=()=>user&&user.businessCode===sargoTenant;
+ const isWorker=()=>isSargo()&&user.role==='worker';
  const originalAllow=roleAllow;
  roleAllow=function(page){return isWorker()?page==='sell':originalAllow(page)};
  const originalProduct=productButton;
@@ -41,6 +43,7 @@
  };
  const oldTeam=team;
  team=async function(){
+  if(!isSargo())return oldTeam();
   if(!user||user.role!=='owner')return flash('Administrator access required.',true);
   const [members,progress]=await Promise.all([api('staff'),api('staff/performance')]);
   const list=members.staff||[],stats=progress.staff||[];

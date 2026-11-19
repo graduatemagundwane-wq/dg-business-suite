@@ -205,6 +205,9 @@
   ].join('');
   body(printable);
   ensureSargoStyles();
+  let pagePrint=document.getElementById('sargo-page-print-style');
+  if(!pagePrint){pagePrint=document.createElement('style');pagePrint.id='sargo-page-print-style';document.head.appendChild(pagePrint)}
+  pagePrint.textContent=(quote||invoice)?'@media print{@page{size:A4;margin:9mm}}':'@media print{@page{size:auto;margin:2mm}}';
   document.getElementById('printdoc').onclick=()=>window.print();
   document.getElementById('backdoc').onclick=()=>go(doc?'documents':isWorker()?'sell':'sales');
  }

@@ -6,6 +6,10 @@ import 'package:sqflite/sqflite.dart';
 import '../services/pdf_service.dart';
 import '../services/receipt_service.dart';
 import 'offline_license.dart';
+import 'sagro_brand.dart';
+
+bool licenceBusinessMatchesSagro(String id) =>
+    id == SagroBrand.existingBusinessId;
 
 class YolaOfflineStore {
   static final instance = YolaOfflineStore._();
@@ -244,10 +248,15 @@ class YolaOfflineStore {
     final sale = records.first;
     final items = await db.query('sale_items',
       where:'sale_id=?',whereArgs:[saleId]);
+    final branded = SagroBrand.existingBusinessId.isNotEmpty &&
+        licenceBusinessMatchesSagro(license.businessId);
     return ReceiptModel(
       receiptNumber:sale['receipt_no']?.toString() ?? '',
-      shopName: license.businessName,shopAddress:'',
-      phoneNumber:'',cashierName:sale['cashier']?.toString() ?? '',
+      shopName: branded ? SagroBrand.displayName : license.businessName,
+      shopAddress: branded ? SagroBrand.documentAddress : '',
+      phoneNumber: branded ? SagroBrand.phone : '',
+      logoPath: branded ? SagroBrand.logoAsset : null,
+      cashierName:sale['cashier']?.toString() ?? '',
       paymentMethod:'cash',
       dateTime:DateTime.parse(sale['created_at'].toString()).toLocal(),
       items: items.map((i) => ReceiptItem(
@@ -259,8 +268,9 @@ class YolaOfflineStore {
       discount:_integer(sale['discount'])/100,
       tax:_integer(sale['tax'])/100,
       grandTotal:_integer(sale['total'])/100,
-      footerMessage:'Yola — Powered by Double Gee Tech',
-      taxNumber:'',showLogo:false,showQrCode:false,paperSize:size);
+      footerMessage: branded ? 'Thank you for choosing SAGRO.' :
+          'Yola — Powered by Double Gee Tech',
+      taxNumber:'',showLogo:branded,showQrCode:false,paperSize:size);
   }
 
   Future<void> printReceipt(int id, {ReceiptPaperSize size = ReceiptPaperSize.mm80}) async {

@@ -6,6 +6,7 @@ import 'package:sqflite/sqflite.dart';
 import '../services/pdf_service.dart';
 import '../services/receipt_service.dart';
 import 'offline_license.dart';
+import 'offline_staff.dart';
 import 'sagro_brand.dart';
 
 bool licenceBusinessMatchesSagro(String id) =>
@@ -20,7 +21,7 @@ class YolaOfflineStore {
     if (_db != null) return _db!;
     final root = await getDatabasesPath();
     _db = await openDatabase(path.join(root, 'yola_android_offline_v1.db'),
-      version: 1, onCreate: (db, _) async {
+      version: 2, onCreate: (db, _) async {
       await db.execute('''CREATE TABLE products (
         business_id TEXT NOT NULL, product_id TEXT NOT NULL,
         name TEXT NOT NULL, sku TEXT, barcode TEXT, category TEXT,
@@ -34,6 +35,7 @@ class YolaOfflineStore {
         id INTEGER PRIMARY KEY AUTOINCREMENT, business_id TEXT NOT NULL,
         device_id TEXT NOT NULL, idempotency_key TEXT NOT NULL UNIQUE,
         receipt_no TEXT UNIQUE, cashier TEXT NOT NULL,
+        staff_id INTEGER,
         customer_name TEXT NOT NULL, payment_method TEXT NOT NULL,
         subtotal INTEGER NOT NULL, tax INTEGER NOT NULL,
         discount INTEGER NOT NULL, total INTEGER NOT NULL,
@@ -50,6 +52,10 @@ class YolaOfflineStore {
         payload TEXT NOT NULL, created_at TEXT NOT NULL,
         synced_at TEXT, attempts INTEGER NOT NULL DEFAULT 0,
         last_error TEXT)''');
+    }, onUpgrade: (db, oldVersion, _) async {
+      if (oldVersion < 2) {
+        await db.execute('ALTER TABLE sales ADD COLUMN staff_id INTEGER');
+      }
     });
     return _db!;
   }
@@ -78,6 +84,16 @@ class YolaOfflineStore {
       where: 'business_id = ? AND (name LIKE ? OR sku LIKE ? OR barcode LIKE ?)',
       whereArgs: [info.businessId, search, search, search],
       orderBy: 'name ASC');
+  }
+
+  /// Cashier catalog excludes cost, stock-management and supplier fields.
+  Future<List<Map<String, Object?>>> saleProducts() async {
+    final info = await YolaLicence.instance.requireActive();
+    return (await database).query('products',
+      columns: ['product_id', 'name', 'sku', 'barcode',
+        'price_cents', 'tax_bps', 'stock_qty'],
+      where: 'business_id=?', whereArgs: [info.businessId],
+      orderBy: 'name COLLATE NOCASE ASC');
   }
 
   Future<void> importOnlineCatalog({
@@ -131,7 +147,7 @@ class YolaOfflineStore {
 
   Future<Map<String, dynamic>> checkout({
     required Map<String, int> quantities,
-    required String cashier,
+    required SagroCashierSession session,
     String customer = '',
     String payment = 'cash',
     int discountCents = 0,
@@ -140,6 +156,8 @@ class YolaOfflineStore {
     // Offline electronic payments cannot be verified. Only physically received
     // cash can be marked paid; do not manufacture card/mobile-money confirmation.
     final info = await YolaLicence.instance.requireActive();
+    await SagroStaffAccess.instance.requireCanSell(session);
+    final cashier = session.name;
     if (payment != 'cash') throw ArgumentError('Offline checkout supports cash only.');
     if (cashier.trim().isEmpty || quantities.isEmpty || quantities.length > 200) {
       throw ArgumentError('Enter cashier and at least one valid sale item.');
@@ -198,6 +216,7 @@ class YolaOfflineStore {
       final saleId = await txn.insert('sales',{
         'business_id': info.businessId, 'device_id': info.deviceId,
         'idempotency_key': key, 'cashier': cashier.trim(),
+        'staff_id': session.workerId,
         'customer_name': customer.trim(), 'payment_method': payment,
         'subtotal': subtotal, 'tax': tax, 'discount': discountCents,
         'total': total, 'created_at': now,
@@ -214,6 +233,7 @@ class YolaOfflineStore {
         'total':total/100, 'subtotal':subtotal/100,
         'discount':discountCents/100, 'tax':tax/100,
         'payment_method':'cash', 'user_name':cashier.trim(),
+        'offline_worker_id': session.workerId,
         'customer_name':customer.trim(),
         'device_id':info.deviceId,
         'items': lines.map((l) => {
@@ -232,7 +252,8 @@ class YolaOfflineStore {
     });
   }
 
-  Future<List<Map<String, Object?>>> sales() async {
+  Future<List<Map<String, Object?>>> sales(SagroCashierSession admin) async {
+    await SagroStaffAccess.instance.requireAdmin(admin);
     final info = await YolaLicence.instance.requireActive();
     return (await database).query('sales',
       where:'business_id=?',whereArgs:[info.businessId],

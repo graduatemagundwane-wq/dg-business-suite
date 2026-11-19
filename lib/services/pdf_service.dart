@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import 'package:flutter/services.dart' show rootBundle;
 
 import 'dashboard_service.dart';
 import 'receipt_service.dart';
@@ -22,6 +23,16 @@ class PdfService {
   }) async {
     final effectivePaperSize = paperSize ?? receipt.paperSize;
     final effectiveDocumentType = documentType ?? receipt.documentType;
+    Uint8List? logoBytes;
+    if (receipt.showLogo && receipt.logoPath != null) {
+      try {
+        final asset = await rootBundle.load(receipt.logoPath!);
+        logoBytes = asset.buffer.asUint8List(
+          asset.offsetInBytes, asset.lengthInBytes);
+      } catch (_) {
+        // Do not replace a missing client logo with a fake one.
+      }
+    }
     final pdf = pw.Document();
 
     pdf.addPage(
@@ -29,7 +40,7 @@ class PdfService {
         pageFormat: _pageFormat(effectivePaperSize),
         margin: _pageMargin(effectivePaperSize),
         build: (_) => [
-          _brandHeader(receipt, effectiveDocumentType),
+          _brandHeader(receipt, effectiveDocumentType, logoBytes: logoBytes),
           pw.SizedBox(height: 10),
           _receiptMeta(receipt),
           pw.SizedBox(height: 12),
@@ -190,12 +201,14 @@ class PdfService {
 
   pw.Widget _brandHeader(
     ReceiptModel receipt,
-    ReceiptDocumentType documentType,
-  ) {
+    ReceiptDocumentType documentType, {
+    Uint8List? logoBytes,
+  }) {
+    final isSagro = receipt.logoPath?.startsWith('assets/sagro/') == true;
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.stretch,
       children: [
-        pw.Center(
+        if (!isSagro) pw.Center(
           child: pw.Text(
             'Double Gee Tech Business Suite',
             textAlign: pw.TextAlign.center,
@@ -207,7 +220,10 @@ class PdfService {
           ),
         ),
         pw.SizedBox(height: 6),
-        if (receipt.showLogo)
+        if (logoBytes != null)
+          pw.Center(child: pw.Image(pw.MemoryImage(logoBytes),
+            height: isSagro ? 62 : 46, fit: pw.BoxFit.contain))
+        else if (receipt.showLogo && !isSagro)
           pw.Center(
             child: pw.Container(
               width: 46,
@@ -228,6 +244,7 @@ class PdfService {
         ),
         pw.Text(receipt.shopAddress, textAlign: pw.TextAlign.center),
         pw.Text('Phone: ${receipt.phoneNumber}', textAlign: pw.TextAlign.center),
+        if (receipt.taxNumber.trim().isNotEmpty)
         pw.Text('Tax No: ${receipt.taxNumber}', textAlign: pw.TextAlign.center),
         pw.SizedBox(height: 6),
         pw.Container(

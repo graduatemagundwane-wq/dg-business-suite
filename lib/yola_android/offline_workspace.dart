@@ -14,9 +14,11 @@ const _background = Color(0xFFF5F7FA);
 class YolaOfflineWorkspace extends StatefulWidget {
   final VoidCallback onReturnOnline;
   final Future<int> Function() onCacheOnlineProducts;
+  final int initialTab;
   const YolaOfflineWorkspace({
     super.key, required this.onReturnOnline,
     required this.onCacheOnlineProducts,
+    this.initialTab = 0,
   });
   @override
   State<YolaOfflineWorkspace> createState() => _YolaOfflineWorkspaceState();
@@ -49,9 +51,18 @@ class _YolaOfflineWorkspaceState extends State<YolaOfflineWorkspace>
   @override
   void initState() {
     super.initState();
+    _selectedTab = widget.initialTab;
     WidgetsBinding.instance.addObserver(this);
     _init();
     _licenceCheck=Timer.periodic(const Duration(minutes:2), (_) => _checkRemote());
+  }
+
+  @override
+  void didUpdateWidget(covariant YolaOfflineWorkspace oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.initialTab != oldWidget.initialTab) {
+      setState(() => _selectedTab = widget.initialTab);
+    }
   }
 
   @override

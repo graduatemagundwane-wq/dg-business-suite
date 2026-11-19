@@ -5,6 +5,7 @@ import '../services/receipt_service.dart';
 import 'offline_license.dart';
 import 'sagro_documents.dart';
 import 'offline_pin.dart';
+import 'offline_staff.dart';
 import 'offline_store.dart';
 
 const _ink = Color(0xFF12273B);
@@ -29,9 +30,18 @@ class _YolaOfflineWorkspaceState extends State<YolaOfflineWorkspace>
   Timer? _licenceCheck;
   YolaLicenceInfo? _license;
   bool _loading = true, _unlocked = false, _busy = false;
+  bool _workerLogin = false;
+  SagroCashierSession? _session;
   String? _error, _notice;
   int _pending = 0, _selectedTab = 0;
   final _loginPin = TextEditingController();
+  final _workerUser = TextEditingController();
+  final _workerPassword = TextEditingController();
+  final _newWorkerName = TextEditingController();
+  final _newWorkerUser = TextEditingController();
+  final _newWorkerPassword = TextEditingController();
+  List<Map<String, Object?>> _workers = [];
+  List<Map<String, Object?>> _performance = [];
   final _businessId = TextEditingController();
   final _businessName = TextEditingController();
   final _ownerName = TextEditingController();
@@ -61,7 +71,7 @@ class _YolaOfflineWorkspaceState extends State<YolaOfflineWorkspace>
   void didUpdateWidget(covariant YolaOfflineWorkspace oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.initialTab != oldWidget.initialTab) {
-      setState(() => _selectedTab = widget.initialTab);
+      setState(() => _selectedTab = _session?.isAdmin == false ? 0 : widget.initialTab);
     }
   }
 
@@ -82,7 +92,7 @@ class _YolaOfflineWorkspaceState extends State<YolaOfflineWorkspace>
         await YolaLicence.instance.requireActive();
       } catch (e) {
         if (mounted) setState(() {
-          _license=null;_unlocked=false;_selectedTab=0;
+          _license=null;_unlocked=false;_session=null;_selectedTab=0;
           _cart.clear();_error=e.toString();
         });
       }
@@ -93,7 +103,9 @@ class _YolaOfflineWorkspaceState extends State<YolaOfflineWorkspace>
   void dispose() {
     _licenceCheck?.cancel();
     WidgetsBinding.instance.removeObserver(this);
-    for(final controller in [_loginPin,_businessId,_businessName,_ownerName,
+    for(final controller in [_loginPin,_workerUser,_workerPassword,
+      _newWorkerName,_newWorkerUser,_newWorkerPassword,
+      _businessId,_businessName,_ownerName,
       _phone,_email,_password,_newPin,_cashier,_customer,_search,_discount]) {
       controller.dispose();
     }
@@ -123,10 +135,53 @@ class _YolaOfflineWorkspaceState extends State<YolaOfflineWorkspace>
   }
 
   Future<void> _refresh() async {
-    final products = await YolaOfflineStore.instance.products();
-    final sales = await YolaOfflineStore.instance.sales();
-    final pending = await YolaOfflineStore.instance.pending();
+    final session = _session;
+    if (session == null) throw StateError('Sign in to access offline sales.');
+    await SagroStaffAccess.instance.requireCanSell(session);
+    final products = session.isAdmin
+      ? await YolaOfflineStore.instance.products()
+      : await YolaOfflineStore.instance.saleProducts();
+    final sales = session.isAdmin
+      ? await YolaOfflineStore.instance.sales(session)
+      : <Map<String, Object?>>[];
+    final pending = session.isAdmin
+      ? await YolaOfflineStore.instance.pending() : 0;
     if (mounted) setState(() { _products=products;_sales=sales;_pending=pending; });
+  }
+
+  Future<void> _loadStaff() async {
+    final admin = _session;
+    if (admin == null || !admin.isAdmin) return;
+    final workers = await SagroStaffAccess.instance.workers(admin);
+    final report = await SagroStaffAccess.instance.performance(admin);
+    if (mounted) setState(() { _workers=workers;_performance=report; });
+  }
+
+  Future<void> _createWorker() => _act(() async {
+    final admin = _session;
+    if (admin == null) throw StateError('Admin sign-in required.');
+    await SagroStaffAccess.instance.createWorker(admin,
+      name:_newWorkerName.text,username:_newWorkerUser.text,
+      password:_newWorkerPassword.text);
+    _newWorkerName.clear();_newWorkerUser.clear();_newWorkerPassword.clear();
+    await _loadStaff();
+    if (mounted) setState(() => _notice='Worker account created. They can sign in to Sell only.');
+  });
+
+  Future<void> _setWorkerActive(int id, bool active) => _act(() async {
+    final admin = _session;
+    if (admin == null) throw StateError('Admin sign-in required.');
+    await SagroStaffAccess.instance.setWorkerActive(admin,id,active);
+    await _loadStaff();
+    if (mounted) setState(() => _notice=active?'Worker reactivated.':'Worker disabled.');
+  });
+
+  void _lock() {
+    setState(() {
+      _unlocked=false;_session=null;_selectedTab=0;
+      _cart.clear();_products=[];_sales=[];_workers=[];_performance=[];
+      _workerPassword.clear();_loginPin.clear();
+    });
   }
 
   Future<void> _requestActivation() => _act(() async {
@@ -157,13 +212,28 @@ class _YolaOfflineWorkspaceState extends State<YolaOfflineWorkspace>
   });
 
   Future<void> _unlock() => _act(() async {
-    await YolaOfflinePin.instance.verify(_loginPin.text);
-    await _refresh();
-    if(mounted) setState(() { _unlocked=true;_notice=null; });
-    _loginPin.clear();
+    final session = _workerLogin
+      ? await SagroStaffAccess.instance.loginWorker(
+          _workerUser.text,_workerPassword.text)
+      : await SagroStaffAccess.instance.loginAdmin(_loginPin.text);
+    _session=session;
+    try {
+      await _refresh();
+    } catch (_) {
+      _session=null;
+      rethrow;
+    }
+    if(mounted) setState(() {
+      _unlocked=true;_notice=null;
+      _selectedTab=session.isAdmin ? widget.initialTab : 0;
+    });
+    _workerPassword.clear();_loginPin.clear();
   });
 
   Future<void> _import() => _act(() async {
+    final admin = _session;
+    if (admin == null) throw StateError('Admin sign-in required.');
+    await SagroStaffAccess.instance.requireAdmin(admin);
     final n = await widget.onCacheOnlineProducts();
     await _refresh();
     if (mounted) setState(() => _notice='$n products securely cached from your signed-in Yola account.');
@@ -233,9 +303,11 @@ class _YolaOfflineWorkspaceState extends State<YolaOfflineWorkspace>
     final cents = (discount * 100).round();
     await _checkRemote(force:true);
     await YolaLicence.instance.requireActive();
+    final session = _session;
+    if (session == null || !_unlocked) throw StateError('Sign in to sell.');
     final result = await YolaOfflineStore.instance.checkout(
       quantities:Map.of(_cart),
-      cashier:_cashier.text,
+      session:session,
       customer:_customer.text,
       discountCents:cents);
     _cart.clear();
@@ -249,10 +321,16 @@ class _YolaOfflineWorkspaceState extends State<YolaOfflineWorkspace>
   });
 
   Future<void> _print(int id) => _act(() async {
+    final admin = _session;
+    if (admin == null) throw StateError('Admin sign-in required.');
+    await SagroStaffAccess.instance.requireAdmin(admin);
     await YolaOfflineStore.instance.printReceipt(id,size:_paper);
   });
 
   Future<void> _sync() => _act(() async {
+    final admin = _session;
+    if (admin == null) throw StateError('Admin sign-in required.');
+    await SagroStaffAccess.instance.requireAdmin(admin);
     final result=await YolaOfflineStore.instance.syncPending();
     await _refresh();
     if (mounted) {
@@ -327,9 +405,19 @@ class _YolaOfflineWorkspaceState extends State<YolaOfflineWorkspace>
       Text('Offline lease ends ${_license!.offlineUntil.toLocal()}',
         style:const TextStyle(fontSize:12)),
       const SizedBox(height:20),
-      _field(_loginPin,'Offline owner PIN',secret:true,
-        type:TextInputType.number),
-      _btn('Unlock offline POS',_unlock,icon:Icons.lock_open_outlined)
+      if(_workerLogin) ...[
+        _field(_workerUser,'Worker username'),
+        _field(_workerPassword,'Worker password',secret:true),
+      ] else
+        _field(_loginPin,'Offline owner PIN',secret:true,
+          type:TextInputType.number),
+      _btn(_workerLogin?'Sign in to Sell':'Unlock admin POS',_unlock,
+        icon:Icons.lock_open_outlined),
+      const SizedBox(height:10),
+      TextButton(
+        onPressed:()=>setState(() { _workerLogin=!_workerLogin;
+          _workerPassword.clear();_loginPin.clear(); }),
+        child:Text(_workerLogin?'Administrator sign in':'Worker sign in'))
     ]))));
 
   Widget _sellPage() {
@@ -344,9 +432,11 @@ class _YolaOfflineWorkspaceState extends State<YolaOfflineWorkspace>
         const SizedBox(height:8),
         const Text('Sales and stock changes are saved on this device. Cloud totals update only after reconciliation.'),
         const SizedBox(height:14),
-        _btn('Cache products from signed-in online Yola',_import,
-          primary:false,icon:Icons.cloud_download_outlined),
-        const SizedBox(height:12),
+        if(_session?.isAdmin == true) ...[
+          _btn('Cache products from signed-in online Yola',_import,
+            primary:false,icon:Icons.cloud_download_outlined),
+          const SizedBox(height:12),
+        ],
         Row(children:[
           Expanded(child:_field(_search,'Search name / SKU / barcode',
             onChanged:(_)=>setState((){}),
@@ -373,8 +463,9 @@ class _YolaOfflineWorkspaceState extends State<YolaOfflineWorkspace>
         Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
           Text(p['name'].toString(),style:const TextStyle(
             fontWeight:FontWeight.bold,color:_ink)),
-          Text('SKU: ${p['sku']}  •  Stock: ${p['stock_qty']}',
-            style:const TextStyle(fontSize:12)),
+          if(_session?.isAdmin == true)
+            Text('SKU: ${p['sku']}  •  Stock: ${p['stock_qty']}',
+              style:const TextStyle(fontSize:12)),
         ])),
         Text(_money((p['price_cents'] as num).toInt())),
         IconButton(onPressed:_busy?null:()=>_add(p),
@@ -403,7 +494,8 @@ class _YolaOfflineWorkspaceState extends State<YolaOfflineWorkspace>
         Text('Total  ${_money(_estimatedTotal)}',
           style:const TextStyle(fontSize:21,fontWeight:FontWeight.w900,color:_ink)),
         const SizedBox(height:14),
-        _field(_cashier,'Cashier name'),
+        Text('Cashier: ${_session?.name ?? 'Not signed in'}',
+          style:const TextStyle(fontWeight:FontWeight.w600)),
         _field(_customer,'Customer (optional)'),
         _field(_discount,'Discount USD',
           type:const TextInputType.numberWithOptions(decimal:true),
@@ -444,6 +536,58 @@ class _YolaOfflineWorkspaceState extends State<YolaOfflineWorkspace>
     if(_sales.isEmpty) _card(const Text('No offline sales yet.'))
   ]);
 
+  Widget _staffAdminPage() => ListView(children:[
+    _card(Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+      const Text('Workers',style:TextStyle(fontSize:22,
+        fontWeight:FontWeight.w800,color:_ink)),
+      const SizedBox(height:8),
+      const Text('Create worker accounts for sales only. Workers cannot view inventory, receipts, quotations, invoices or reports.'),
+      const SizedBox(height:16),
+      _field(_newWorkerName,'Worker full name'),
+      _field(_newWorkerUser,'Worker username'),
+      _field(_newWorkerPassword,'Temporary worker password',secret:true),
+      _btn('Create worker account',_createWorker,icon:Icons.person_add_alt_1_outlined),
+    ])),
+    for(final w in _workers) _card(Row(children:[
+      const Icon(Icons.person_outline,color:_accent),
+      const SizedBox(width:12),
+      Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+        Text(w['name'].toString(),style:const TextStyle(fontWeight:FontWeight.bold)),
+        Text('@${w['username']} • ${w['active']==1?'Active':'Disabled'}',
+          style:const TextStyle(fontSize:12)),
+      ])),
+      TextButton(onPressed:_busy?null:()=>_setWorkerActive(
+        (w['id'] as num).toInt(),w['active']!=1),
+        child:Text(w['active']==1?'Disable':'Enable')),
+    ])),
+    _card(Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+      Row(children:[
+        const Expanded(child:Text('Worker progress',style:TextStyle(
+          fontSize:21,fontWeight:FontWeight.w800,color:_ink))),
+        IconButton(onPressed:()=>_act(_loadStaff),
+          tooltip:'Refresh worker progress',icon:const Icon(Icons.refresh)),
+      ]),
+      const Text('Sales recorded on this Android device only.',
+        style:TextStyle(fontSize:12)),
+      if(_performance.isEmpty)
+        const Padding(padding:EdgeInsets.symmetric(vertical:12),
+          child:Text('No workers have been added yet.')),
+      for(final p in _performance) Padding(
+        padding:const EdgeInsets.symmetric(vertical:10),
+        child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+          Text(p['name'].toString(),style:const TextStyle(
+            fontSize:16,fontWeight:FontWeight.bold)),
+          Text('Today: ${p['today_count']} sales • ${_money((p['today_total'] as num).toInt())}'),
+          Text('7 days: ${p['week_count']} sales • ${_money((p['week_total'] as num).toInt())}'),
+          Text('30 days: ${p['month_count']} sales • ${_money((p['month_total'] as num).toInt())}'),
+          Text('All time: ${p['sales_count']} sales • ${_money((p['sales_total'] as num).toInt())}'),
+          if(p['last_sale'] != null)
+            Text('Last sale: ${p['last_sale']}',style:const TextStyle(fontSize:11)),
+          const Divider(),
+        ])),
+    ])),
+  ]);
+
   Widget _syncPage() => ListView(children:[
     _card(Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
       const Text('Cloud reconciliation',style:TextStyle(fontSize:22,
@@ -475,11 +619,20 @@ class _YolaOfflineWorkspaceState extends State<YolaOfflineWorkspace>
           style:TextStyle(fontSize:8,letterSpacing:1.3)),
       ]),
       actions:[
-        IconButton(onPressed:widget.onReturnOnline,
-          tooltip:'Online workspace',icon:const Icon(Icons.language)),
+        if(!_unlocked || _session?.isAdmin == true)
+          IconButton(onPressed:widget.onReturnOnline,
+            tooltip:'Online workspace',icon:const Icon(Icons.language)),
+        if(_unlocked && _session?.isAdmin == true)
+          IconButton(onPressed:()=>_act(() async {
+            await _loadStaff();
+            if(mounted) setState(() => _selectedTab=4);
+          }),tooltip:'Workers and progress',
+            icon:const Icon(Icons.people_outline)),
+        if(_unlocked && _selectedTab==4)
+          IconButton(onPressed:()=>setState(()=>_selectedTab=0),
+            tooltip:'Back to sales',icon:const Icon(Icons.arrow_back)),
         if(_unlocked) IconButton(
-          tooltip:'Lock offline session',
-          onPressed:()=>setState(() { _unlocked=false;_cart.clear(); }),
+          tooltip:'Lock offline session',onPressed:_lock,
           icon:const Icon(Icons.lock_outline)),
       ]),
     body:_loading?const Center(child:CircularProgressIndicator()):
@@ -498,10 +651,14 @@ class _YolaOfflineWorkspaceState extends State<YolaOfflineWorkspace>
           padding:const EdgeInsets.symmetric(horizontal:12),
           child:_license==null?_activation():
             !_unlocked?_unlockPage():
-            [_sellPage(),_history(),const SagroDocuments(),_syncPage()][_selectedTab],
+            _session?.isAdmin == true
+              ? [_sellPage(),_history(),const SagroDocuments(),
+                  _syncPage(),_staffAdminPage()][_selectedTab]
+              : _sellPage(),
         )),
       ]),
-    bottomNavigationBar: _unlocked?NavigationBar(
+    bottomNavigationBar: _unlocked && _session?.isAdmin == true &&
+        _selectedTab < 4 ? NavigationBar(
       selectedIndex:_selectedTab,
       onDestinationSelected:(i)=>setState(()=>_selectedTab=i),
       destinations:const [

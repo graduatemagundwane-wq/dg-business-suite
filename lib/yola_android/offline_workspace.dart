@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../screens/barcode_scan.dart';
 import '../services/receipt_service.dart';
 import 'offline_license.dart';
+import 'sagro_documents.dart';
 import 'offline_pin.dart';
 import 'offline_store.dart';
 
@@ -453,7 +454,7 @@ class _YolaOfflineWorkspaceState extends State<YolaOfflineWorkspace> {
           padding:const EdgeInsets.symmetric(horizontal:12),
           child:_license==null?_activation():
             !_unlocked?_unlockPage():
-            [_sellPage(),_history(),_syncPage()][_selectedTab],
+            [_sellPage(),_history(),const SagroDocuments(),_syncPage()][_selectedTab],
         )),
       ]),
     bottomNavigationBar: _unlocked?NavigationBar(
@@ -462,6 +463,7 @@ class _YolaOfflineWorkspaceState extends State<YolaOfflineWorkspace> {
       destinations:const [
         NavigationDestination(icon:Icon(Icons.point_of_sale),label:'Sell'),
         NavigationDestination(icon:Icon(Icons.receipt_long),label:'Receipts'),
+        NavigationDestination(icon:Icon(Icons.description_outlined),label:'Documents'),
         NavigationDestination(icon:Icon(Icons.sync),label:'Sync'),
       ]):null,
   );

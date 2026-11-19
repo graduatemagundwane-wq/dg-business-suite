@@ -51,7 +51,6 @@ class _YolaOfflineWorkspaceState extends State<YolaOfflineWorkspace>
   final _email = TextEditingController();
   final _password = TextEditingController();
   final _newPin = TextEditingController();
-  final _cashier = TextEditingController(text:'Owner');
   final _customer = TextEditingController();
   final _search = TextEditingController();
   final _discount = TextEditingController(text:'0');
@@ -109,7 +108,7 @@ class _YolaOfflineWorkspaceState extends State<YolaOfflineWorkspace>
     for(final controller in [_loginPin,_workerUser,_workerPassword,
       _newWorkerName,_newWorkerUser,_newWorkerPassword,
       _businessId,_businessName,_ownerName,
-      _phone,_email,_password,_newPin,_cashier,_customer,_search,_discount]) {
+      _phone,_email,_password,_newPin,_customer,_search,_discount]) {
       controller.dispose();
     }
     super.dispose();

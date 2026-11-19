@@ -70,6 +70,7 @@ flutter:
 
    assets:
     - assets/dg_logo.png
+    - assets/sagro/sagro_logo.jpg
   
     
 

@@ -183,7 +183,7 @@ class _YolaOfflineWorkspaceState extends State<YolaOfflineWorkspace>
     setState(() {
       _unlocked=false;_session=null;_selectedTab=0;
       _cart.clear();_products=[];_sales=[];_workers=[];_performance=[];
-      _workerPassword.clear();_loginPin.clear();
+      _workerPassword.clear();_loginPin.clear();_discount.text='0';
     });
   }
 
@@ -232,6 +232,7 @@ class _YolaOfflineWorkspaceState extends State<YolaOfflineWorkspace>
     });
     widget.onWorkerAuthChanged?.call(!session.isAdmin);
     _workerPassword.clear();_loginPin.clear();
+    if (!session.isAdmin) _discount.text='0';
   });
 
   Future<void> _import() => _act(() async {
@@ -302,13 +303,14 @@ class _YolaOfflineWorkspaceState extends State<YolaOfflineWorkspace>
 
   Future<void> _checkout() => _act(() async {
     if (_cart.isEmpty) throw StateError('The cart is empty.');
-    final discount = (double.tryParse(_discount.text.trim()) ?? -1);
+    final session = _session;
+    if (session == null || !_unlocked) throw StateError('Sign in to sell.');
+    final discount = session.isAdmin
+      ? (double.tryParse(_discount.text.trim()) ?? -1) : 0.0;
     if (!discount.isFinite || discount < 0) throw StateError('Enter a valid discount.');
     final cents = (discount * 100).round();
     await _checkRemote(force:true);
     await YolaLicence.instance.requireActive();
-    final session = _session;
-    if (session == null || !_unlocked) throw StateError('Sign in to sell.');
     final result = await YolaOfflineStore.instance.checkout(
       quantities:Map.of(_cart),
       session:session,
@@ -501,9 +503,10 @@ class _YolaOfflineWorkspaceState extends State<YolaOfflineWorkspace>
         Text('Cashier: ${_session?.name ?? 'Not signed in'}',
           style:const TextStyle(fontWeight:FontWeight.w600)),
         _field(_customer,'Customer (optional)'),
-        _field(_discount,'Discount USD',
-          type:const TextInputType.numberWithOptions(decimal:true),
-          onChanged:(_)=>setState((){})),
+        if(_session?.isAdmin == true)
+          _field(_discount,'Discount USD',
+            type:const TextInputType.numberWithOptions(decimal:true),
+            onChanged:(_)=>setState((){})),
         const Text('Payment: CASH ONLY (received in person)',
           style:TextStyle(color:_accent,fontWeight:FontWeight.bold)),
         const SizedBox(height:12),

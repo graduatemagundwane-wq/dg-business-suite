@@ -10,7 +10,7 @@ class SagroBrand {
   static const tradingDescription = 'Feedmix Distributor';
   static const address = '738 Rujeko Phase 4, Glendale, Mazowe';
   static const phone = '0790833331';
-  static const logoAsset = 'assets/sagro/sagro_logo.png';
+  static const logoAsset = 'assets/sagro/sagro_logo.jpg';
   static const existingBusinessId = String.fromEnvironment(
     'SAGRO_BUSINESS_ID',
     defaultValue: '',

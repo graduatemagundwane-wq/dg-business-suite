@@ -59,8 +59,8 @@ class _YolaOfflineWorkspaceState extends State<YolaOfflineWorkspace>
     if (state == AppLifecycleState.resumed) _checkRemote();
   }
 
-  Future<void> _checkRemote() async {
-    if (_license == null || _busy) return;
+  Future<void> _checkRemote({bool force = false}) async {
+    if (_license == null || (_busy && !force)) return;
     try {
       final info = await YolaLicence.instance.renewOnlineLease();
       if (mounted) setState(() => _license=info);
@@ -220,7 +220,7 @@ class _YolaOfflineWorkspaceState extends State<YolaOfflineWorkspace>
     final discount = (double.tryParse(_discount.text.trim()) ?? -1);
     if (!discount.isFinite || discount < 0) throw StateError('Enter a valid discount.');
     final cents = (discount * 100).round();
-    await _checkRemote();
+    await _checkRemote(force:true);
     await YolaLicence.instance.requireActive();
     final result = await YolaOfflineStore.instance.checkout(
       quantities:Map.of(_cart),

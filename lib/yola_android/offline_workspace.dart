@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../screens/barcode_scan.dart';
 import '../services/receipt_service.dart';
@@ -21,7 +22,9 @@ class YolaOfflineWorkspace extends StatefulWidget {
   State<YolaOfflineWorkspace> createState() => _YolaOfflineWorkspaceState();
 }
 
-class _YolaOfflineWorkspaceState extends State<YolaOfflineWorkspace> {
+class _YolaOfflineWorkspaceState extends State<YolaOfflineWorkspace>
+    with WidgetsBindingObserver {
+  Timer? _licenceCheck;
   YolaLicenceInfo? _license;
   bool _loading = true, _unlocked = false, _busy = false;
   String? _error, _notice;
@@ -46,11 +49,39 @@ class _YolaOfflineWorkspaceState extends State<YolaOfflineWorkspace> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _init();
+    _licenceCheck=Timer.periodic(const Duration(minutes:2), (_) => _checkRemote());
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _checkRemote();
+  }
+
+  Future<void> _checkRemote() async {
+    if (_license == null || _busy) return;
+    try {
+      final info = await YolaLicence.instance.renewOnlineLease();
+      if (mounted) setState(() => _license=info);
+    } catch (_) {
+      // Network loss is handled by the existing signed offline lease.
+      // A recorded suspension or expired lease must immediately lock UI.
+      try {
+        await YolaLicence.instance.requireActive();
+      } catch (e) {
+        if (mounted) setState(() {
+          _license=null;_unlocked=false;_selectedTab=0;
+          _cart.clear();_error=e.toString();
+        });
+      }
+    }
   }
 
   @override
   void dispose() {
+    _licenceCheck?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     for(final controller in [_loginPin,_businessId,_businessName,_ownerName,
       _phone,_email,_password,_newPin,_cashier,_customer,_search,_discount]) {
       controller.dispose();
@@ -189,6 +220,8 @@ class _YolaOfflineWorkspaceState extends State<YolaOfflineWorkspace> {
     final discount = (double.tryParse(_discount.text.trim()) ?? -1);
     if (!discount.isFinite || discount < 0) throw StateError('Enter a valid discount.');
     final cents = (discount * 100).round();
+    await _checkRemote();
+    await YolaLicence.instance.requireActive();
     final result = await YolaOfflineStore.instance.checkout(
       quantities:Map.of(_cart),
       cashier:_cashier.text,

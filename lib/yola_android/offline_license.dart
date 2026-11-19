@@ -33,6 +33,10 @@ class YolaLicence {
       throw StateError('Yola Master Control returned an unreadable response.');
     }
     if (response.statusCode < 200 || response.statusCode >= 300) {
+      final reason = (data['status'] ?? data['error'] ?? '').toString().toLowerCase();
+      if (reason.contains('suspend') || reason.contains('revok')) {
+        await _storage.write(key:'yola_android_suspended',value:'true');
+      }
       throw StateError((data['error'] ?? data['detail'] ??
         'Master Control request failed (HTTP ${response.statusCode}).').toString());
     }
@@ -88,6 +92,7 @@ class YolaLicence {
     }
     final info = await _verify(data, allowClockWrite: true);
     await _storage.write(key: 'yola_android_license', value: jsonEncode(data));
+    await _storage.delete(key: 'yola_android_suspended');
     await _storage.delete(key: 'yola_android_claim');
     return info;
   }
@@ -106,7 +111,8 @@ class YolaLicence {
       'app_version': 'android-offline-0.2',
     });
     if (latest['active'] != true || latest['status'] != 'active') {
-      throw StateError('Master Control has declined this licence.');
+      await _storage.write(key:'yola_android_suspended',value:'true');
+      throw StateError('Yola access is suspended by Double Gee Tech Master Control.');
     }
     final leaseToken = latest['lease_token']?.toString();
     if (leaseToken == null || leaseToken.isEmpty) {
@@ -115,10 +121,14 @@ class YolaLicence {
     final renewed = {...original, 'lease_token': leaseToken};
     final info = await _verify(renewed, allowClockWrite: true);
     await _storage.write(key:'yola_android_license',value:jsonEncode(renewed));
+    await _storage.delete(key:'yola_android_suspended');
     return info;
   }
 
   Future<YolaLicenceInfo?> active() async {
+    if (await _storage.read(key:'yola_android_suspended') == 'true') {
+      throw StateError('Yola access has been suspended. Contact Double Gee Tech.');
+    }
     final saved = await _storage.read(key: 'yola_android_license');
     if (saved == null) return null;
     final data = (jsonDecode(saved) as Map).cast<String, dynamic>();

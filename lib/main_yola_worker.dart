@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
-const _host = 'https://yola-onboarding.vercel.app/';
+const _host = 'https://yola-onboarding.vercel.app/?activated=1';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -168,7 +168,7 @@ class _YolaWorkerWorkspaceState extends State<YolaWorkerWorkspace> {
               body:'{}'
             });
           } catch (e) {}
-          location.replace('/');
+          location.replace('/?activated=1');
         })();
       ''');
     } catch (_) {

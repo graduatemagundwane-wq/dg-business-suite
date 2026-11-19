@@ -4,7 +4,7 @@
 const original=require('./pos-original');
 module.exports=async function restrictedPos(ctx){
  const {user,path,method,body:b,db,ok,fail,active}=ctx;
- if(!user || user.role!=='worker')return original(ctx);
+ if(!user || user.role!=='worker' || String(user.installation_id)!=='9cdeb31c-0883-4ba0-8d20-50d115011e2c')return original(ctx);
  if(!active(user)){
    fail(ctx.res,403,'Master Control activation required');return true;
  }

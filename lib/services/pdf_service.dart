@@ -264,9 +264,15 @@ class PdfService {
   }
 
   pw.Widget _receiptMeta(ReceiptModel receipt) {
+    final numberLabel = switch (receipt.documentType) {
+      ReceiptDocumentType.quotation => 'Quotation Number',
+      ReceiptDocumentType.invoice => 'Invoice Number',
+      ReceiptDocumentType.proformaInvoice => 'Proforma Invoice Number',
+      ReceiptDocumentType.receipt => 'Receipt Number',
+    };
     return pw.Column(
       children: [
-        _pdfInfoRow('Receipt Number', receipt.receiptNumber),
+        _pdfInfoRow(numberLabel, receipt.receiptNumber),
         _pdfInfoRow('Date & Time', receipt.dateTime.toString()),
         _pdfInfoRow('Cashier', receipt.cashierName),
         _pdfInfoRow('Customer', receipt.customerName ?? 'Walk-in Customer'),

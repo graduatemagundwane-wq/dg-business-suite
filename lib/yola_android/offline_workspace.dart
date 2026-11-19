@@ -16,10 +16,12 @@ class YolaOfflineWorkspace extends StatefulWidget {
   final VoidCallback onReturnOnline;
   final Future<int> Function() onCacheOnlineProducts;
   final int initialTab;
+  final ValueChanged<bool>? onWorkerAuthChanged;
   const YolaOfflineWorkspace({
     super.key, required this.onReturnOnline,
     required this.onCacheOnlineProducts,
     this.initialTab = 0,
+    this.onWorkerAuthChanged,
   });
   @override
   State<YolaOfflineWorkspace> createState() => _YolaOfflineWorkspaceState();
@@ -93,6 +95,7 @@ class _YolaOfflineWorkspaceState extends State<YolaOfflineWorkspace>
       } catch (e) {
         if (mounted) setState(() {
           _license=null;_unlocked=false;_session=null;_selectedTab=0;
+          widget.onWorkerAuthChanged?.call(false);
           _cart.clear();_error=e.toString();
         });
       }
@@ -177,6 +180,7 @@ class _YolaOfflineWorkspaceState extends State<YolaOfflineWorkspace>
   });
 
   void _lock() {
+    widget.onWorkerAuthChanged?.call(false);
     setState(() {
       _unlocked=false;_session=null;_selectedTab=0;
       _cart.clear();_products=[];_sales=[];_workers=[];_performance=[];
@@ -227,6 +231,7 @@ class _YolaOfflineWorkspaceState extends State<YolaOfflineWorkspace>
       _unlocked=true;_notice=null;
       _selectedTab=session.isAdmin ? widget.initialTab : 0;
     });
+    widget.onWorkerAuthChanged?.call(!session.isAdmin);
     _workerPassword.clear();_loginPin.clear();
   });
 

@@ -163,6 +163,9 @@ class YolaOfflineStore {
       throw ArgumentError('Enter cashier and at least one valid sale item.');
     }
     if (discountCents < 0) throw ArgumentError('Negative discounts are not allowed.');
+    if (!session.isAdmin && discountCents != 0) {
+      throw StateError('Only the administrator can apply discounts.');
+    }
     final key = checkoutKey ?? _newId();
     if (key.length < 16) throw ArgumentError('Invalid checkout idempotency key.');
     final db = await database;
@@ -233,7 +236,6 @@ class YolaOfflineStore {
         'total':total/100, 'subtotal':subtotal/100,
         'discount':discountCents/100, 'tax':tax/100,
         'payment_method':'cash', 'user_name':cashier.trim(),
-        'offline_worker_id': session.workerId,
         'customer_name':customer.trim(),
         'device_id':info.deviceId,
         'items': lines.map((l) => {

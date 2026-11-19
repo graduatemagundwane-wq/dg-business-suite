@@ -259,7 +259,7 @@ class _SagroDocumentsState extends State<SagroDocuments> {
         title: Text(row['number'].toString()),
         subtitle: Text(row['type'].toString() + ' • ' +
             row['created_at'].toString()),
-        trailing: Wrap(mainAxisSize: MainAxisSize.min, children: [
+        trailing: Row(mainAxisSize: MainAxisSize.min, children: [
           IconButton(
             tooltip: 'Print',
             icon: const Icon(Icons.print),

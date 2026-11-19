@@ -41,6 +41,7 @@ class YolaWorkspaceWebView extends StatefulWidget {
 class _YolaWorkspaceWebViewState extends State<YolaWorkspaceWebView> {
   late final WebViewController _web;
   bool _loading=true, _failed=false, _online=true;
+  int _initialOfflineTab = 0;
   Completer<int>? _catalogRequest;
   String? _catalogNonce;
 
@@ -205,12 +206,40 @@ class _YolaWorkspaceWebViewState extends State<YolaWorkspaceWebView> {
                       const Text('You can use offline cash sales only if this device has a valid signed Master Control licence, a current offline lease and cached inventory.',
                         textAlign:TextAlign.center),
                       const SizedBox(height:22),
-                      FilledButton.icon(onPressed:()=>setState(()=>_online=false),
+                      FilledButton.icon(onPressed:()=>setState(() {
+                          _initialOfflineTab=0;_online=false;
+                        }),
                         icon:const Icon(Icons.offline_bolt_outlined),
                         label:const Text('Open licensed offline POS')),
                       const SizedBox(height:10),
                       TextButton(onPressed:_retry,child:const Text('Retry online Yola'))
                     ])))))),
+              if(!_failed && !_loading)
+                Positioned(right:8,bottom:70,child:Material(
+                  elevation:3,
+                  borderRadius:BorderRadius.circular(28),
+                  color:const Color(0xFFF8FAFC),
+                  child:PopupMenuButton<int>(
+                    tooltip:'SAGRO Receipts, Quotations and Invoices',
+                    itemBuilder:(_)=>const [
+                      PopupMenuItem(value:1,child:Text('Receipts')),
+                      PopupMenuItem(value:2,child:Text('Quotations')),
+                      PopupMenuItem(value:3,child:Text('Invoices')),
+                    ],
+                    onSelected:(target)=>setState(() {
+                      _initialOfflineTab=target==1?1:2;
+                      _online=false;
+                    }),
+                    child:const Padding(
+                      padding:EdgeInsets.symmetric(horizontal:14,vertical:12),
+                      child:Row(mainAxisSize:MainAxisSize.min,children:[
+                        Icon(Icons.description_outlined,size:20),
+                        SizedBox(width:7),
+                        Text('Documents'),
+                      ]),
+                    ),
+                  ),
+                )),
               if(!_failed && !_loading)
                 Positioned(right:8,bottom:8,
                   child:FloatingActionButton.small(
@@ -218,10 +247,13 @@ class _YolaWorkspaceWebViewState extends State<YolaWorkspaceWebView> {
                     heroTag:'offline-yola',
                     backgroundColor:const Color(0xFF12273B),
                     foregroundColor:Colors.white,
-                    onPressed:()=>setState(()=>_online=false),
+                    onPressed:()=>setState(() {
+                      _initialOfflineTab=0;_online=false;
+                    }),
                     child:const Icon(Icons.offline_bolt_rounded))),
             ]),
             YolaOfflineWorkspace(
+              initialTab:_initialOfflineTab,
               onReturnOnline:()=>setState(()=>_online=true),
               onCacheOnlineProducts:_cacheOnlineProducts,
             )

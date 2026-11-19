@@ -4,12 +4,14 @@ on:
   push:
     branches:
       - feature/yola-android-ui-parity-20261020
+      - client/sagro-android-20261119
     paths:
       - 'lib/main_yola_android.dart'
       - 'lib/yola_android/**'
       - 'lib/screens/barcode_scan.dart'
       - 'lib/services/pdf_service.dart'
       - 'lib/services/receipt_service.dart'
+      - 'assets/sagro/**'
       - 'pubspec.yaml'
       - 'pubspec.lock'
       - 'android/**'
@@ -88,7 +90,7 @@ jobs:
         shell: bash
         run: |
           for attempt in 1 2 3; do
-            if flutter build apk --release -t lib/main_yola_android.dart --build-name 0.2.0 --build-number 2; then
+            if flutter build apk --release -t lib/main_yola_android.dart --build-name 0.2.0 --build-number 2 --dart-define=SAGRO_BUSINESS_ID="${{ secrets.SAGRO_BUSINESS_ID }}"; then
               exit 0
             fi
             if [ "$attempt" -eq 3 ]; then exit 1; fi

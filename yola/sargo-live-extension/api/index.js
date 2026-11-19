@@ -9,6 +9,7 @@ const email=x=>String(x||'').trim().toLowerCase();
 const uuid=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const ok=(res,code,data)=>{res.statusCode=code;res.setHeader('Content-Type','application/json; charset=utf-8');res.setHeader('Cache-Control','no-store');res.end(JSON.stringify(data))};
 const fail=(res,code,message)=>ok(res,code,{error:message});
+const targetTenant='9cdeb31c-0883-4ba0-8d20-50d115011e2c';
 const active=x=>x&&x.status==='active'&&(!x.expires_at||new Date(x.expires_at)>new Date());
 const queryPath=req=>{const u=new URL(req.url,'https://'+(req.headers.host||'yola-onboarding.vercel.app'));return u.pathname==='/api/index'&&u.searchParams.has('path')?'/api/'+u.searchParams.get('path'):u.pathname};
 async function body(req){if(req.body&&typeof req.body==='object'&&!Array.isArray(req.body))return req.body;return await new Promise((resolve,reject)=>{let s='',size=0;req.on('data',c=>{size+=c.length;if(size>60000){reject(Object.assign(new Error('Large request'),{status:413}));req.destroy();return}s+=c});req.on('end',()=>{try{resolve(JSON.parse(s||'{}'))}catch{reject(Object.assign(new Error('Invalid JSON'),{status:400}))}});req.on('error',reject)})}
@@ -101,6 +102,11 @@ module.exports=async(req,res)=>{
   if(!process.env.DG_MASTER_DATABASE_URL)return fail(res,503,'Master Control not configured');
   db=await pool.connect();
   const u=await admin(db,req);if(!u)return fail(res,403,'Active Yola business owner required');
+  if(String(u.installation_id)!==targetTenant){
+    db.release();db=null;
+    if(path==='/api/staff')return original(req,res);
+    return fail(res,404,'Feature is not enabled for this business');
+  }
   if(path==='/api/staff')return list(db,res,u);
   if(path==='/api/staff/performance')return performance(db,res,u);
   const b=await body(req);
